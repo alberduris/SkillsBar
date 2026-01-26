@@ -7,10 +7,10 @@ DerivedData
 
 # Bundles / artifacts
 # Main app bundle (any variation)
-CodexBar.app/
-CodexBar *.app/
-CodexBar_*.app/
-Codexbar.app/
+SkillsBar.app/
+SkillsBar *.app/
+SkillsBar_*.app/
+Skillsbar.app/
 # Release artifacts
 *.ipa
 *.dSYM*
@@ -25,6 +25,12 @@ debug_*.swift
 
 # Misc
 .DS_Store
+
+# Environment files
+.env
+.env.*
+*.env
+!version.env
 
 # Debug/analysis docs
 docs/*-analysis.md
