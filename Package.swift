@@ -1,66 +1,54 @@
 // swift-tools-version: 6.2
 import CompilerPluginSupport
-import Foundation
 import PackageDescription
 
-let sweetCookieKitPath = "../SweetCookieKit"
-let useLocalSweetCookieKit =
-    ProcessInfo.processInfo.environment["CODEXBAR_USE_LOCAL_SWEETCOOKIEKIT"] == "1"
-let sweetCookieKitDependency: Package.Dependency =
-    useLocalSweetCookieKit && FileManager.default.fileExists(atPath: sweetCookieKitPath)
-    ? .package(path: sweetCookieKitPath)
-    : .package(url: "https://github.com/steipete/SweetCookieKit", from: "0.4.0")
-
 let package = Package(
-    name: "CodexBar",
+    name: "SkillsBar",
     platforms: [
         .macOS(.v14),
     ],
     dependencies: [
-        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.8.1"),
         .package(url: "https://github.com/steipete/Commander", from: "0.2.1"),
         .package(url: "https://github.com/apple/swift-log", from: "1.9.1"),
         .package(url: "https://github.com/apple/swift-syntax", from: "600.0.1"),
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "2.4.0"),
-        sweetCookieKitDependency,
     ],
     targets: {
         var targets: [Target] = [
             .target(
-                name: "CodexBarCore",
+                name: "SkillsBarCore",
                 dependencies: [
-                    "CodexBarMacroSupport",
+                    "SkillsBarMacroSupport",
                     .product(name: "Logging", package: "swift-log"),
-                    .product(name: "SweetCookieKit", package: "SweetCookieKit"),
                 ],
                 swiftSettings: [
                     .enableUpcomingFeature("StrictConcurrency"),
                 ]),
             .macro(
-                name: "CodexBarMacros",
+                name: "SkillsBarMacros",
                 dependencies: [
                     .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
                     .product(name: "SwiftSyntaxBuilder", package: "swift-syntax"),
                     .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
                 ]),
             .target(
-                name: "CodexBarMacroSupport",
+                name: "SkillsBarMacroSupport",
                 dependencies: [
-                    "CodexBarMacros",
+                    "SkillsBarMacros",
                 ]),
             .executableTarget(
-                name: "CodexBarCLI",
+                name: "SkillsBarCLI",
                 dependencies: [
-                    "CodexBarCore",
+                    "SkillsBarCore",
                     .product(name: "Commander", package: "Commander"),
                 ],
-                path: "Sources/CodexBarCLI",
+                path: "Sources/SkillsBarCLI",
                 swiftSettings: [
                     .enableUpcomingFeature("StrictConcurrency"),
                 ]),
             .testTarget(
-                name: "CodexBarLinuxTests",
-                dependencies: ["CodexBarCore", "CodexBarCLI"],
+                name: "SkillsBarLinuxTests",
+                dependencies: ["SkillsBarCore", "SkillsBarCLI"],
                 path: "TestsLinux",
                 swiftSettings: [
                     .enableUpcomingFeature("StrictConcurrency"),
@@ -71,48 +59,31 @@ let package = Package(
         #if os(macOS)
         targets.append(contentsOf: [
             .executableTarget(
-                name: "CodexBarClaudeWatchdog",
-                dependencies: [],
-                path: "Sources/CodexBarClaudeWatchdog",
-                swiftSettings: [
-                    .enableUpcomingFeature("StrictConcurrency"),
-                ]),
-            .executableTarget(
-                name: "CodexBar",
+                name: "SkillsBar",
                 dependencies: [
-                    .product(name: "Sparkle", package: "Sparkle"),
                     .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts"),
-                    "CodexBarMacroSupport",
-                    "CodexBarCore",
+                    "SkillsBarMacroSupport",
+                    "SkillsBarCore",
                 ],
-                path: "Sources/CodexBar",
+                path: "Sources/SkillsBar",
                 resources: [
                     .process("Resources"),
                 ],
                 swiftSettings: [
-                    // Opt into Swift 6 strict concurrency (approachable migration path).
-                    .enableUpcomingFeature("StrictConcurrency"),
-                    .define("ENABLE_SPARKLE"),
-                ]),
-            .executableTarget(
-                name: "CodexBarWidget",
-                dependencies: ["CodexBarCore"],
-                path: "Sources/CodexBarWidget",
-                swiftSettings: [
                     .enableUpcomingFeature("StrictConcurrency"),
                 ]),
             .executableTarget(
-                name: "CodexBarClaudeWebProbe",
-                dependencies: ["CodexBarCore"],
-                path: "Sources/CodexBarClaudeWebProbe",
+                name: "SkillsBarWidget",
+                dependencies: ["SkillsBarCore"],
+                path: "Sources/SkillsBarWidget",
                 swiftSettings: [
                     .enableUpcomingFeature("StrictConcurrency"),
                 ]),
         ])
 
         targets.append(.testTarget(
-            name: "CodexBarTests",
-            dependencies: ["CodexBar", "CodexBarCore", "CodexBarCLI"],
+            name: "SkillsBarTests",
+            dependencies: ["SkillsBar", "SkillsBarCore", "SkillsBarCLI"],
             path: "Tests",
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency"),
