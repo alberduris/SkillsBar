@@ -81,6 +81,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     nonisolated func menuWillOpen(_ menu: NSMenu) {
         MainActor.assumeIsolated {
             self.rebuildMenu()
+            // Refresh skills when menu opens
+            Task {
+                await self.skillsStore.refresh()
+            }
         }
     }
 

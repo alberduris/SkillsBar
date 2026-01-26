@@ -49,7 +49,6 @@ Want to add a new agent? PRs welcome!
 - **Plugin marketplace support**: Discovers skills from Claude Code plugin marketplaces.
 - **User-invocable skills**: Shows which skills can be triggered with `/skill-name`.
 - **Bundled CLI** (`skillsbar`): List skills, filter by agent, output JSON for scripts and CI.
-- **Auto-refresh**: Configurable refresh frequency (manual, 1m, 2m, 5m, 15m).
 - **Native macOS**: Built with SwiftUI, feels right at home on your Mac.
 
 ## CLI
