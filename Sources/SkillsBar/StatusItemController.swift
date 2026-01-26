@@ -123,10 +123,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 enum IconRenderer {
     /// Creates a skills icon for the menu bar
     static func makeIcon(skillCount: Int) -> NSImage {
-        // SF Symbol - clean and works perfectly
-        let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
-        let image = NSImage(systemSymbolName: "s.square.fill", accessibilityDescription: "SkillsBar")?
-            .withSymbolConfiguration(config) ?? NSImage()
+        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+        guard let symbol = NSImage(systemSymbolName: "s.square.fill", accessibilityDescription: "SkillsBar")?
+            .withSymbolConfiguration(config) else {
+            return NSImage()
+        }
+
+        // Create image with standard menu bar height (22pt) and center the symbol
+        let menuBarHeight: CGFloat = 22
+        let symbolSize = symbol.size
+        let finalSize = NSSize(width: symbolSize.width, height: menuBarHeight)
+
+        let image = NSImage(size: finalSize, flipped: false) { rect in
+            let y = (menuBarHeight - symbolSize.height) / 2
+            symbol.draw(in: NSRect(x: 0, y: y, width: symbolSize.width, height: symbolSize.height))
+            return true
+        }
         image.isTemplate = true
         return image
     }
