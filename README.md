@@ -87,8 +87,10 @@ No data leaves your machine. No analytics. No telemetry.
 ```
 
 ## Related
-- [skills](https://github.com/anthropics/skills) — The npm package for managing Claude Code skills.
-- [openskills](https://github.com/anthropics/openskills) — Universal skills loader for AI coding agents.
+- [Agent Skills Specification](https://agentskills.io/specification) — The standard format for defining agent skills.
+- [skills.sh](https://skills.sh) — CLI and ecosystem for distributing AI agent skills (`npx skills add`).
+- [Claude Code Plugin Marketplaces](https://code.claude.com/docs/en/plugin-marketplaces) — Official docs on creating and distributing Claude Code plugins.
+- [anthropics/skills](https://github.com/anthropics/skills) — Anthropic's reference implementation and example skills collection.
 
 ## Acknowledgments
 
