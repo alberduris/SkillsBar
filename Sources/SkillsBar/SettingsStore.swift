@@ -16,6 +16,9 @@ final class SettingsStore {
         static let showProjectSkills = "showProjectSkills"
         static let projectPath = "projectPath"
         static let recursiveProjectPath = "recursiveProjectPath"
+        static let showGlobalMCPs = "showGlobalMCPs"
+        static let showProjectMCPs = "showProjectMCPs"
+        static let showBuiltInMCPs = "showBuiltInMCPs"
         static let enabledAgentIDs = "enabledAgentIDs"
         static let debugLogLevel = "debugLogLevel"
     }
@@ -54,6 +57,24 @@ final class SettingsStore {
     var showProjectSkills: Bool {
         didSet {
             userDefaults.set(showProjectSkills, forKey: Keys.showProjectSkills)
+        }
+    }
+
+    var showGlobalMCPs: Bool {
+        didSet {
+            userDefaults.set(showGlobalMCPs, forKey: Keys.showGlobalMCPs)
+        }
+    }
+
+    var showProjectMCPs: Bool {
+        didSet {
+            userDefaults.set(showProjectMCPs, forKey: Keys.showProjectMCPs)
+        }
+    }
+
+    var showBuiltInMCPs: Bool {
+        didSet {
+            userDefaults.set(showBuiltInMCPs, forKey: Keys.showBuiltInMCPs)
         }
     }
 
@@ -102,6 +123,10 @@ final class SettingsStore {
         showGlobalSkills = userDefaults.object(forKey: Keys.showGlobalSkills) as? Bool ?? true
         showPluginSkills = userDefaults.object(forKey: Keys.showPluginSkills) as? Bool ?? true
         showProjectSkills = userDefaults.object(forKey: Keys.showProjectSkills) as? Bool ?? true
+
+        showGlobalMCPs = userDefaults.object(forKey: Keys.showGlobalMCPs) as? Bool ?? true
+        showProjectMCPs = userDefaults.object(forKey: Keys.showProjectMCPs) as? Bool ?? true
+        showBuiltInMCPs = userDefaults.object(forKey: Keys.showBuiltInMCPs) as? Bool ?? true
 
         // Load project paths - support both old single path and new array format
         if let pathStrings = userDefaults.stringArray(forKey: Keys.projectPath) {

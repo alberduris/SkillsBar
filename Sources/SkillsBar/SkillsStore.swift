@@ -120,8 +120,9 @@ public final class SkillsStore {
         )
 
         let mcpOptions = MCPDiscovery.Options(
-            includeGlobal: true,
-            includeProject: !allProjectPaths.isEmpty,
+            includeGlobal: SettingsStore.shared.showGlobalMCPs,
+            includeProject: SettingsStore.shared.showProjectMCPs && !allProjectPaths.isEmpty,
+            includeBuiltIn: SettingsStore.shared.showBuiltInMCPs,
             projectPaths: allProjectPaths
         )
 

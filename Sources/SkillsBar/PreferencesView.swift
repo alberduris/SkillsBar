@@ -106,6 +106,14 @@ struct SourcesPane: View {
             }
 
             Section {
+                Toggle("Global MCPs", isOn: $settings.showGlobalMCPs)
+                Toggle("Project MCPs", isOn: $settings.showProjectMCPs)
+                Toggle("Built-in MCPs", isOn: $settings.showBuiltInMCPs)
+            } header: {
+                Text("MCP Sources")
+            }
+
+            Section {
                 if allFolders.isEmpty {
                     Text("No folders added")
                         .foregroundStyle(.secondary)
@@ -288,7 +296,7 @@ struct AboutPane: View {
                 Text("Version \(versionString)")
                     .foregroundStyle(.secondary)
 
-                Text("Know your skills before your agent does.")
+                Text("Know your skills and MCPs before your agent does.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
