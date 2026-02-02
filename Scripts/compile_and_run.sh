@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# Reset CodexBar: kill running instances, build, package, relaunch, verify.
+# Reset SkillsBar: kill running instances, build, package, relaunch, verify.
 
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_BUNDLE="${ROOT_DIR}/CodexBar.app"
-APP_PROCESS_PATTERN="CodexBar.app/Contents/MacOS/CodexBar"
-DEBUG_PROCESS_PATTERN="${ROOT_DIR}/.build/debug/CodexBar"
-RELEASE_PROCESS_PATTERN="${ROOT_DIR}/.build/release/CodexBar"
+APP_BUNDLE="${ROOT_DIR}/SkillsBar.app"
+APP_PROCESS_PATTERN="SkillsBar.app/Contents/MacOS/SkillsBar"
+DEBUG_PROCESS_PATTERN="${ROOT_DIR}/.build/debug/SkillsBar"
+RELEASE_PROCESS_PATTERN="${ROOT_DIR}/.build/release/SkillsBar"
 LOCK_KEY="$(printf '%s' "${ROOT_DIR}" | shasum -a 256 | cut -c1-8)"
-LOCK_DIR="${TMPDIR:-/tmp}/codexbar-compile-and-run-${LOCK_KEY}"
+LOCK_DIR="${TMPDIR:-/tmp}/skillsbar-compile-and-run-${LOCK_KEY}"
 LOCK_PID_FILE="${LOCK_DIR}/pid"
 WAIT_FOR_LOCK=0
 RUN_TESTS=0
 DEBUG_LLDB=0
 RELEASE_ARCHES=""
-SIGNING_MODE="${CODEXBAR_SIGNING:-}"
+SIGNING_MODE="${SKILLSBAR_SIGNING:-}"
 
 log()  { printf '%s\n' "$*"; }
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -42,19 +42,6 @@ resolve_signing_mode() {
     SIGNING_MODE="adhoc"
     return
   fi
-
-  local candidate=""
-  for candidate in \
-    "Developer ID Application: Peter Steinberger (Y5PE65HELJ)" \
-    "CodexBar Development"
-  do
-    if has_signing_identity "${candidate}"; then
-      APP_IDENTITY="${candidate}"
-      export APP_IDENTITY
-      SIGNING_MODE="identity"
-      return
-    fi
-  done
 
   SIGNING_MODE="adhoc"
 }
@@ -103,19 +90,12 @@ acquire_lock() {
 
 trap cleanup EXIT INT TERM
 
-kill_claude_probes() {
-  # CodexBar spawns `claude /usage` + `/status` in a PTY; if we kill the app mid-probe we can orphan them.
-  pkill -f "claude (/status|/usage) --allowed-tools" 2>/dev/null || true
-  sleep 0.2
-  pkill -9 -f "claude (/status|/usage) --allowed-tools" 2>/dev/null || true
-}
-
-kill_all_codexbar() {
+kill_all_skillsbar() {
   is_running() {
     pgrep -f "${APP_PROCESS_PATTERN}" >/dev/null 2>&1 \
       || pgrep -f "${DEBUG_PROCESS_PATTERN}" >/dev/null 2>&1 \
       || pgrep -f "${RELEASE_PROCESS_PATTERN}" >/dev/null 2>&1 \
-      || pgrep -x "CodexBar" >/dev/null 2>&1
+      || pgrep -x "SkillsBar" >/dev/null 2>&1
   }
 
   # Phase 1: request termination (give the app time to exit cleanly).
@@ -123,7 +103,7 @@ kill_all_codexbar() {
     pkill -f "${APP_PROCESS_PATTERN}" 2>/dev/null || true
     pkill -f "${DEBUG_PROCESS_PATTERN}" 2>/dev/null || true
     pkill -f "${RELEASE_PROCESS_PATTERN}" 2>/dev/null || true
-    pkill -x "CodexBar" 2>/dev/null || true
+    pkill -x "SkillsBar" 2>/dev/null || true
     if ! is_running; then
       return 0
     fi
@@ -134,7 +114,7 @@ kill_all_codexbar() {
   pkill -9 -f "${APP_PROCESS_PATTERN}" 2>/dev/null || true
   pkill -9 -f "${DEBUG_PROCESS_PATTERN}" 2>/dev/null || true
   pkill -9 -f "${RELEASE_PROCESS_PATTERN}" 2>/dev/null || true
-  pkill -9 -x "CodexBar" 2>/dev/null || true
+  pkill -9 -x "SkillsBar" 2>/dev/null || true
 
   for _ in {1..25}; do
     if ! is_running; then
@@ -143,7 +123,7 @@ kill_all_codexbar() {
     sleep 0.2
   done
 
-  fail "Failed to kill all CodexBar instances."
+  fail "Failed to kill all SkillsBar instances."
 }
 
 # 1) Ensure a single runner instance.
@@ -165,25 +145,24 @@ done
 
 resolve_signing_mode
 if [[ "${SIGNING_MODE}" == "adhoc" ]]; then
-  log "==> Signing: adhoc (set APP_IDENTITY or install a dev cert to avoid keychain prompts)"
+  log "==> Signing: adhoc (set APP_IDENTITY to avoid keychain prompts)"
 else
   log "==> Signing: ${APP_IDENTITY:-Developer ID Application}"
 fi
 
 acquire_lock
 
-# 2) Kill all running CodexBar instances (debug, release, bundled).
-log "==> Killing existing CodexBar instances"
-kill_all_codexbar
-kill_claude_probes
+# 2) Kill all running SkillsBar instances (debug, release, bundled).
+log "==> Killing existing SkillsBar instances"
+kill_all_skillsbar
 
 # 2.5) Delete keychain entries to avoid permission prompts with adhoc signing
 # (adhoc signature changes on every build, making old keychain entries inaccessible)
 if [[ "${SIGNING_MODE:-adhoc}" == "adhoc" ]]; then
   log "==> Clearing keychain entries (adhoc signing)"
-  security delete-generic-password -s "com.steipete.CodexBar" 2>/dev/null || true
+  security delete-generic-password -s "com.skillsbar.app" 2>/dev/null || true
   # Clear all keychain items for the app to avoid multiple prompts
-  while security delete-generic-password -s "com.steipete.CodexBar" 2>/dev/null; do
+  while security delete-generic-password -s "com.skillsbar.app" 2>/dev/null; do
     :
   done
 fi
@@ -201,12 +180,12 @@ if [[ -n "${RELEASE_ARCHES}" ]]; then
   ARCHES_VALUE="${RELEASE_ARCHES}"
 fi
 if [[ "${DEBUG_LLDB}" == "1" ]]; then
-  run_step "package app" env CODEXBAR_ALLOW_LLDB=1 ARCHES="${ARCHES_VALUE}" "${ROOT_DIR}/scripts/package_app.sh" debug
+  run_step "package app" env SKILLSBAR_ALLOW_LLDB=1 ARCHES="${ARCHES_VALUE}" "${ROOT_DIR}/Scripts/package_app.sh" debug
 else
   if [[ -n "${SIGNING_MODE}" ]]; then
-    run_step "package app" env CODEXBAR_SIGNING="${SIGNING_MODE}" ARCHES="${ARCHES_VALUE}" "${ROOT_DIR}/scripts/package_app.sh"
+    run_step "package app" env SKILLSBAR_SIGNING="${SIGNING_MODE}" ARCHES="${ARCHES_VALUE}" "${ROOT_DIR}/Scripts/package_app.sh"
   else
-    run_step "package app" env ARCHES="${ARCHES_VALUE}" "${ROOT_DIR}/scripts/package_app.sh"
+    run_step "package app" env ARCHES="${ARCHES_VALUE}" "${ROOT_DIR}/Scripts/package_app.sh"
   fi
 fi
 
@@ -214,14 +193,14 @@ fi
 log "==> launch app"
 if ! open "${APP_BUNDLE}"; then
   log "WARN: launch app returned non-zero; falling back to direct binary launch."
-  "${APP_BUNDLE}/Contents/MacOS/CodexBar" >/dev/null 2>&1 &
+  "${APP_BUNDLE}/Contents/MacOS/SkillsBar" >/dev/null 2>&1 &
   disown
 fi
 
 # 5) Verify the app stays up for at least a moment (launch can be >1s on some systems).
 for _ in {1..10}; do
   if pgrep -f "${APP_PROCESS_PATTERN}" >/dev/null 2>&1; then
-    log "OK: CodexBar is running."
+    log "OK: SkillsBar is running."
     exit 0
   fi
   sleep 0.4

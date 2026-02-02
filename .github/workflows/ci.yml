@@ -67,23 +67,17 @@ jobs:
           swift-version: "6.2.1"
           skip-verify-signature: true
 
-      - name: Build CodexBarCLI (release, static Swift stdlib)
-        run: swift build -c release --product CodexBarCLI --static-swift-stdlib
+      - name: Build SkillsBarCLI (release, static Swift stdlib)
+        run: swift build -c release --product SkillsBarCLI --static-swift-stdlib
 
       - name: Swift Test (Linux only)
         run: swift test --parallel
 
-      - name: Smoke test CodexBarCLI
+      - name: Smoke test SkillsBarCLI
         shell: bash
         run: |
           set -euo pipefail
-          BIN_DIR="$(swift build -c release --product CodexBarCLI --static-swift-stdlib --show-bin-path)"
-          BIN="$BIN_DIR/CodexBarCLI"
+          BIN_DIR="$(swift build -c release --product SkillsBarCLI --static-swift-stdlib --show-bin-path)"
+          BIN="$BIN_DIR/SkillsBarCLI"
           "$BIN" --help >/dev/null
           "$BIN" --version >/dev/null
-          if "$BIN" usage --provider codex --web >/dev/null 2>&1; then
-            echo "Expected --web to fail on Linux"
-            exit 1
-          fi
-          "$BIN" usage --provider codex --web 2>&1 | tee /tmp/codexbarcli-stderr.txt >/dev/null || true
-          grep -q "macOS" /tmp/codexbarcli-stderr.txt
