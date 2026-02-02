@@ -46,6 +46,35 @@ final class ListOptions: CommanderParsable {
     }
 }
 
+// MARK: - MCPs Command Options
+
+final class MCPsOptions: CommanderParsable {
+    @Flag(names: [.short("v"), .long("verbose")], help: "Enable verbose logging")
+    var verbose: Bool = false
+
+    @Flag(name: .long("json"), help: "Output as JSON")
+    var jsonOutput: Bool = false
+
+    @Flag(name: .long("json-only"), help: "Output JSON only (suppress other output)")
+    var jsonOnly: Bool = false
+
+    @Flag(name: .long("global"), help: "Include only global MCP servers")
+    var global: Bool = false
+
+    @Option(name: .long("project"), help: "Include project MCP servers from path")
+    var project: String?
+
+    init() {}
+
+    func apply(_ values: ParsedValues) {
+        verbose = values.flags.contains("verbose")
+        jsonOutput = values.flags.contains("jsonOutput") || values.flags.contains("json")
+        jsonOnly = values.flags.contains("jsonOnly")
+        global = values.flags.contains("global")
+        project = values.options["project"]?.last
+    }
+}
+
 // MARK: - Agents Command Options
 
 final class AgentsOptions: CommanderParsable {

@@ -33,6 +33,8 @@ enum SkillsBarCLI {
                 await runList(invocation.parsedValues)
             case ["agents"]:
                 runAgents(invocation.parsedValues)
+            case ["mcps"]:
+                await runMCPs(invocation.parsedValues)
             default:
                 exit(code: .failure, message: "Unknown command", output: outputPreferences)
             }
@@ -46,6 +48,7 @@ enum SkillsBarCLI {
     private static func commandDescriptors() -> [CommandDescriptor] {
         let listSignature = CommandSignature.describe(ListOptions())
         let agentsSignature = CommandSignature.describe(AgentsOptions())
+        let mcpsSignature = CommandSignature.describe(MCPsOptions())
 
         return [
             CommandDescriptor(
@@ -58,6 +61,11 @@ enum SkillsBarCLI {
                 abstract: "List supported agents",
                 discussion: nil,
                 signature: agentsSignature),
+            CommandDescriptor(
+                name: "mcps",
+                abstract: "List discovered MCP servers",
+                discussion: nil,
+                signature: mcpsSignature),
         ]
     }
 
@@ -153,7 +161,137 @@ enum SkillsBarCLI {
         }
     }
 
-    // MARK: - Output
+    private static func runMCPs(_ values: ParsedValues) async {
+        let options = MCPsOptions()
+        options.apply(values)
+
+        let outputPrefs = CLIOutputPreferences.from(values: values)
+        let isJSON = outputPrefs.jsonOutput || outputPrefs.jsonOnly
+
+        // Build discovery options
+        var discoveryOptions = MCPDiscovery.Options()
+        let hasFilter = options.global || options.project != nil
+        discoveryOptions.includeGlobal = hasFilter ? options.global : true
+        discoveryOptions.includeProject = options.project != nil
+        if let projectPath = options.project {
+            discoveryOptions.projectPaths = [URL(fileURLWithPath: projectPath)]
+        }
+
+        let discovery = MCPDiscovery()
+        let servers = await discovery.discoverAll(options: discoveryOptions)
+
+        if isJSON {
+            outputMCPsJSON(servers: servers)
+        } else {
+            outputMCPsText(servers: servers)
+        }
+    }
+
+    // MARK: - MCP Output
+
+    private static func outputMCPsJSON(servers: [MCPServer]) {
+        let payload = servers.map { server -> [String: Any] in
+            var dict: [String: Any] = [
+                "id": server.id,
+                "name": server.name,
+                "transport": server.transport.rawValue,
+                "source": server.source.rawValue,
+                "isEnabled": server.isEnabled,
+            ]
+            if let url = server.url {
+                dict["url"] = url
+            }
+            if let command = server.command {
+                dict["command"] = command
+            }
+            if !server.args.isEmpty {
+                dict["args"] = server.args
+            }
+            if !server.envKeys.isEmpty {
+                dict["envKeys"] = server.envKeys
+            }
+            if !server.headerKeys.isEmpty {
+                dict["headerKeys"] = server.headerKeys
+            }
+            if let projectName = server.projectName {
+                dict["projectName"] = projectName
+            }
+            return dict
+        }
+
+        if let data = try? JSONSerialization.data(withJSONObject: payload, options: .prettyPrinted),
+           let json = String(data: data, encoding: .utf8) {
+            print(json)
+        }
+    }
+
+    private static func outputMCPsText(servers: [MCPServer]) {
+        if servers.isEmpty {
+            print("No MCP servers found.")
+            return
+        }
+
+        // Group by source
+        let bySource = Dictionary(grouping: servers, by: \.source)
+
+        for source in MCPSource.allCases {
+            guard let sourceServers = bySource[source], !sourceServers.isEmpty else { continue }
+
+            // For project, group by project name
+            if source == .project {
+                let byProject = Dictionary(grouping: sourceServers) { $0.projectName ?? "Unknown" }
+                for projectName in byProject.keys.sorted() {
+                    guard let projectServers = byProject[projectName] else { continue }
+                    print("Project MCPs — \(projectName) (\(projectServers.count)):")
+                    print(String(repeating: "-", count: 50))
+                    for server in projectServers {
+                        printMCPServer(server)
+                    }
+                    print()
+                }
+            } else if source == .builtIn {
+                print("Built-in MCPs (always available):")
+                print(String(repeating: "-", count: 50))
+                print("  Runtime MCPs managed by Claude Code.")
+                print("  Status reflects default config, not live connections.")
+                print()
+                for server in sourceServers {
+                    printMCPServer(server)
+                }
+                print()
+            } else {
+                print("\(source.displayName) MCPs (\(sourceServers.count)):")
+                print(String(repeating: "-", count: 50))
+                for server in sourceServers {
+                    printMCPServer(server)
+                }
+                print()
+            }
+        }
+
+        let enabledCount = servers.filter(\.isEnabled).count
+        print("Total: \(servers.count) MCP servers (\(enabledCount) enabled)")
+    }
+
+    private static func printMCPServer(_ server: MCPServer) {
+        let status = server.isEnabled ? "✓" : "○"
+        print("  \(status) \(server.name) [\(server.transport.description)]")
+        switch server.transport {
+        case .http, .sse:
+            if let url = server.url {
+                print("    \(url)")
+            }
+        case .stdio:
+            var cmd = server.command ?? ""
+            if !server.args.isEmpty {
+                cmd += " " + server.args.joined(separator: " ")
+            }
+            let truncated = cmd.prefix(60)
+            print("    \(truncated)\(cmd.count > 60 ? "..." : "")")
+        }
+    }
+
+    // MARK: - Skills Output
 
     private static func outputJSON(skills: [Skill]) {
         let payload = skills.map { skill -> [String: Any] in
@@ -255,12 +393,13 @@ enum SkillsBarCLI {
         COMMANDS:
           list      List discovered skills (default)
           agents    List supported agents
+          mcps      List discovered MCP servers
 
         OPTIONS:
           --agent <id>     Filter by agent (e.g., "claude")
-          --global         Include global skills only
+          --global         Include global skills/MCPs only
           --plugins        Include plugin skills only
-          --project <path> Include project skills from path
+          --project <path> Include project skills/MCPs from path
           --json           Output as JSON
           -v, --verbose    Verbose output
           -h, --help       Show help
@@ -272,6 +411,9 @@ enum SkillsBarCLI {
           skillsbar list --project /path/to/project
           skillsbar list --json
           skillsbar agents
+          skillsbar mcps
+          skillsbar mcps --project /path/to/project
+          skillsbar mcps --json
         """)
         Darwin.exit(0)
     }

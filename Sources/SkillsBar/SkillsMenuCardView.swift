@@ -36,10 +36,18 @@ struct SkillsMenuCardView: View {
             Divider()
 
             // Skills content
-            if skillsStore.skills.isEmpty {
+            if skillsStore.skills.isEmpty && !skillsStore.hasMCPServers {
                 emptyState
-            } else {
+            } else if !skillsStore.skills.isEmpty {
                 skillsList
+            }
+
+            // MCP servers section
+            if skillsStore.hasMCPServers {
+                if !skillsStore.skills.isEmpty {
+                    Divider()
+                }
+                mcpList
             }
 
             Divider()
@@ -78,7 +86,7 @@ struct SkillsMenuCardView: View {
 
             HStack {
                 let enabledCount = skillsStore.skills.filter(\.isEnabled).count
-                Text("\(skillsStore.totalCount) skills")
+                Text(headerSubtitle)
                     .font(.subheadline)
                     .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
 
@@ -180,7 +188,44 @@ struct SkillsMenuCardView: View {
         .padding(.bottom, 2)
     }
 
+    // MARK: - MCP List
+
+    private var mcpList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(MCPSource.allCases, id: \.self) { source in
+                if let servers = skillsStore.mcpServersBySource[source], !servers.isEmpty {
+                    if source == .project {
+                        // Group project servers by project name
+                        let groupedByProject = Dictionary(grouping: servers) { $0.projectName ?? "Unknown" }
+                        ForEach(groupedByProject.keys.sorted(), id: \.self) { projectName in
+                            if let projectServers = groupedByProject[projectName] {
+                                MCPSourceSectionView(source: source, servers: projectServers, projectName: projectName)
+                            }
+                        }
+                    } else {
+                        MCPSourceSectionView(source: source, servers: servers, projectName: nil)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
     // MARK: - Helpers
+
+    private var headerSubtitle: String {
+        var parts: [String] = []
+        if skillsStore.totalCount > 0 {
+            parts.append("\(skillsStore.totalCount) skills")
+        }
+        if skillsStore.mcpCount > 0 {
+            parts.append("\(skillsStore.mcpCount) MCPs")
+        }
+        if parts.isEmpty {
+            return "0 skills"
+        }
+        return parts.joined(separator: ", ")
+    }
 
     /// Returns "parent/project" display name for project root URL
     private func projectDisplayName(for projectRoot: URL?) -> String {
@@ -356,6 +401,182 @@ private struct SkillRowView: View {
         }
         .onTapGesture {
             NSWorkspace.shared.activateFileViewerSelecting([skill.path])
+        }
+    }
+}
+
+// MARK: - MCP Source Section
+
+private struct MCPSourceSectionView: View {
+    let source: MCPSource
+    let servers: [MCPServer]
+    let projectName: String?
+
+    @Environment(\.menuItemHighlighted) private var isHighlighted
+
+    private var sectionTitle: String {
+        if let projectName, source == .project {
+            return projectName
+        }
+        return source.displayName
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Section header
+            HStack(spacing: 6) {
+                Image(systemName: source == .builtIn ? source.sfSymbolName : "server.rack")
+                    .font(.caption)
+                    .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
+
+                Text(sectionTitle)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
+
+                if source == .builtIn {
+                    Text("always available")
+                        .font(.caption)
+                        .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted).opacity(0.5))
+                } else {
+                    Text("(\(servers.count))")
+                        .font(.caption)
+                        .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted).opacity(0.7))
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+            .background(MenuHighlightStyle.progressTrack(isHighlighted).opacity(0.5))
+
+            // Built-in explanation
+            if source == .builtIn {
+                Text("Runtime MCPs managed by Claude Code. Status reflects default config, not live connections.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted).opacity(0.55))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
+            }
+
+            // Servers
+            ForEach(servers.prefix(8)) { server in
+                MCPServerRowView(server: server)
+            }
+
+            if servers.count > 8 {
+                Text("... and \(servers.count - 8) more")
+                    .font(.footnote)
+                    .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
+            }
+        }
+    }
+}
+
+// MARK: - MCP Server Row
+
+private struct MCPServerRowView: View {
+    let server: MCPServer
+
+    @Environment(\.menuItemHighlighted) private var isHighlighted
+    @State private var isHovering = false
+
+    private var contentOpacity: Double {
+        server.isEnabled ? 1.0 : 0.6
+    }
+
+    private var transportColor: Color {
+        switch server.transport {
+        case .http: return .blue
+        case .sse: return .purple
+        case .stdio: return .orange
+        }
+    }
+
+    private var detailText: String {
+        switch server.transport {
+        case .http, .sse:
+            if let url = server.url {
+                // Truncate long URLs
+                if url.count > 40 {
+                    return String(url.prefix(37)) + "..."
+                }
+                return url
+            }
+            return ""
+        case .stdio:
+            var parts = [server.command ?? ""]
+            if !server.args.isEmpty {
+                parts.append(contentsOf: server.args.prefix(2))
+                if server.args.count > 2 {
+                    parts.append("...")
+                }
+            }
+            let joined = parts.joined(separator: " ")
+            if joined.count > 45 {
+                return String(joined.prefix(42)) + "..."
+            }
+            return joined
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            // Enabled/disabled indicator
+            Image(systemName: server.isEnabled ? "checkmark.circle.fill" : "circle.dashed")
+                .font(.system(size: 14))
+                .foregroundStyle(server.isEnabled ? Color.green : Color.secondary)
+                .padding(.top, 1)
+
+            VStack(alignment: .leading, spacing: 4) {
+                // Line 1: Server name + transport badge
+                HStack(spacing: 6) {
+                    Text(server.name)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(MenuHighlightStyle.primary(isHighlighted))
+
+                    Text(server.transport.description)
+                        .font(.system(size: 9, weight: .medium))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(transportColor.opacity(0.15))
+                        .foregroundStyle(transportColor)
+                        .clipShape(Capsule())
+
+                    Spacer()
+                }
+
+                // Line 2: URL or command
+                if !detailText.isEmpty {
+                    Text(detailText)
+                        .font(.footnote)
+                        .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted).opacity(0.85))
+                        .lineLimit(1)
+                }
+            }
+        }
+        .opacity(contentOpacity)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background {
+            if isHovering {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.1))
+                    .padding(.horizontal, 6)
+            }
+        }
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            isHovering = hovering
+        }
+        .onTapGesture {
+            // For http/sse, open URL in browser
+            if let urlString = server.url, let url = URL(string: urlString) {
+                NSWorkspace.shared.open(url)
+            }
         }
     }
 }

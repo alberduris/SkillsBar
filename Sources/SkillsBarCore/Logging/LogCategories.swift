@@ -31,6 +31,8 @@ public enum LogCategories {
     public static let launchAtLogin = "launch-at-login"
     public static let login = "login"
     public static let logging = "logging"
+    public static let mcpConfig = "mcp-config"
+    public static let mcpDiscovery = "mcp-discovery"
     public static let minimaxAPITokenStore = "minimax-api-token-store"
     public static let minimaxCookie = "minimax-cookie"
     public static let minimaxCookieStore = "minimax-cookie-store"

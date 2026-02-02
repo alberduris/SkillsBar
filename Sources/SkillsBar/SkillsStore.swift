@@ -9,6 +9,9 @@ public final class SkillsStore {
     /// All discovered skills
     public private(set) var skills: [Skill] = []
 
+    /// All discovered MCP servers
+    public private(set) var mcpServers: [MCPServer] = []
+
     /// Skills grouped by source
     public var skillsBySource: [SkillSource: [Skill]] {
         Dictionary(grouping: skills, by: \.source)
@@ -43,9 +46,21 @@ public final class SkillsStore {
         }
     }
 
+    /// MCP servers grouped by source
+    public var mcpServersBySource: [MCPSource: [MCPServer]] {
+        Dictionary(grouping: mcpServers, by: \.source)
+    }
+
+    /// Total MCP server count
+    public var mcpCount: Int { mcpServers.count }
+
+    /// Whether there are any MCP servers
+    public var hasMCPServers: Bool { !mcpServers.isEmpty }
+
     // MARK: - Private State
 
     private var discovery: SkillsDiscovery
+    private var mcpDiscovery = MCPDiscovery()
 
     /// Enabled agents for discovery
     public var enabledAgents: [Agent] = AgentRegistry.supported {
@@ -87,7 +102,7 @@ public final class SkillsStore {
 
     // MARK: - Actions
 
-    /// Refresh all skills
+    /// Refresh all skills and MCP servers
     public func refresh() async {
         guard !isRefreshing else { return }
 
@@ -97,15 +112,25 @@ public final class SkillsStore {
         let expandedPaths = RecursivePathExpander.expand(recursiveProjectPaths)
         let allProjectPaths = Array(Set(projectPaths + expandedPaths))
 
-        let options = SkillsDiscovery.Options(
+        let skillsOptions = SkillsDiscovery.Options(
             includeGlobal: true,
             includePlugins: true,
             includeProject: !allProjectPaths.isEmpty,
             projectPaths: allProjectPaths
         )
 
-        let discoveredSkills = await discovery.discoverAll(options: options)
-        skills = discoveredSkills
+        let mcpOptions = MCPDiscovery.Options(
+            includeGlobal: true,
+            includeProject: !allProjectPaths.isEmpty,
+            projectPaths: allProjectPaths
+        )
+
+        // Discover skills and MCPs concurrently
+        async let discoveredSkills = discovery.discoverAll(options: skillsOptions)
+        async let discoveredMCPs = mcpDiscovery.discoverAll(options: mcpOptions)
+
+        skills = await discoveredSkills
+        mcpServers = await discoveredMCPs
         lastRefreshTime = Date()
 
         isRefreshing = false
@@ -145,9 +170,10 @@ public final class SkillsStore {
         recursiveProjectPaths = []
     }
 
-    /// Clear all skills
+    /// Clear all skills and MCP servers
     public func clear() {
         skills = []
+        mcpServers = []
         lastRefreshTime = nil
     }
 
