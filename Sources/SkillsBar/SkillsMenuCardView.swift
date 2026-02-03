@@ -28,13 +28,14 @@ enum MenuTab: String, CaseIterable {
 
 /// Main card view for the skills menu.
 struct SkillsMenuCardView: View {
-    let skillsStore: SkillsStore
+    @Bindable var skillsStore: SkillsStore
     let onRefresh: () -> Void
     let onOpenSettings: () -> Void
     let width: CGFloat
 
     @Environment(\.menuItemHighlighted) private var isHighlighted
     @State private var selectedTab: MenuTab = .skills
+    @State private var filterText = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -51,6 +52,8 @@ struct SkillsMenuCardView: View {
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 16)
+
+            filterBar
 
             // Tab content in scrollable area with fixed height.
             // NSMenu items have a fixed frame — without a constant-height
@@ -85,6 +88,49 @@ struct SkillsMenuCardView: View {
             footerSection
         }
         .frame(width: width, alignment: .leading)
+    }
+
+    // MARK: - Filter
+
+    private var filterQuery: String {
+        filterText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private var isFiltering: Bool {
+        !filterQuery.isEmpty
+    }
+
+    private var filterBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.caption)
+                .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
+
+            TextField("Filter projects", text: $filterText)
+                .textFieldStyle(.plain)
+                .padding(.vertical, 6)
+                .padding(.horizontal, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.6))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(Color(nsColor: .separatorColor).opacity(0.6), lineWidth: 1)
+                )
+                .disableAutocorrection(true)
+
+            if !filterText.isEmpty {
+                Button(action: { filterText = "" }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted).opacity(0.7))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 2)
     }
 
     // MARK: - Header
@@ -195,6 +241,20 @@ struct SkillsMenuCardView: View {
         .padding(.vertical, 24)
     }
 
+    private var noMatchesState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .font(.title)
+                .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
+
+            Text("No matching projects")
+                .font(.subheadline)
+                .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+    }
+
     // MARK: - Skills List
 
     private var skillsList: some View {
@@ -210,9 +270,13 @@ struct SkillsMenuCardView: View {
                 case .project:
                     return false
                 }
-            }.sorted()
+            }
             if !globalSkills.isEmpty {
-                SkillScopeSectionView(title: "All Projects", icon: "globe", skills: globalSkills)
+                SkillScopeSectionView(
+                    title: "All Projects",
+                    icon: "globe",
+                    skills: globalSkills.sorted()
+                )
             }
 
             // Project skills + project/local scoped plugin skills, grouped by project
@@ -227,15 +291,21 @@ struct SkillsMenuCardView: View {
                     return false
                 }
             }
-            if !projectScopedSkills.isEmpty {
-                let groupedByProject = Dictionary(grouping: projectScopedSkills) { skill in
-                    projectDisplayName(for: skill.projectRoot)
+            let groupedByProject = Dictionary(grouping: projectScopedSkills) { skill in
+                projectDisplayName(for: skill.projectRoot)
+            }
+            let visibleProjectNames = groupedByProject.keys.sorted().filter { projectName in
+                if !isFiltering { return true }
+                return projectName.lowercased().contains(filterQuery)
+            }
+            ForEach(visibleProjectNames, id: \.self) { projectName in
+                if let skills = groupedByProject[projectName] {
+                    SkillScopeSectionView(title: projectName, icon: "folder", skills: skills.sorted())
                 }
-                ForEach(groupedByProject.keys.sorted(), id: \.self) { projectName in
-                    if let skills = groupedByProject[projectName] {
-                        SkillScopeSectionView(title: projectName, icon: "folder", skills: skills.sorted())
-                    }
-                }
+            }
+
+            if isFiltering && visibleProjectNames.isEmpty {
+                noMatchesState
             }
         }
         .padding(.vertical, 6)
@@ -279,7 +349,11 @@ struct SkillsMenuCardView: View {
                     if source == .project {
                         // Group project servers by project name
                         let groupedByProject = Dictionary(grouping: servers) { $0.projectName ?? "Unknown" }
-                        ForEach(groupedByProject.keys.sorted(), id: \.self) { projectName in
+                        let visibleProjectNames = groupedByProject.keys.sorted().filter { projectName in
+                            if !isFiltering { return true }
+                            return projectName.lowercased().contains(filterQuery)
+                        }
+                        ForEach(visibleProjectNames, id: \.self) { projectName in
                             if let projectServers = groupedByProject[projectName] {
                                 MCPSourceSectionView(source: source, servers: projectServers, projectName: projectName)
                             }
@@ -288,6 +362,10 @@ struct SkillsMenuCardView: View {
                         MCPSourceSectionView(source: source, servers: servers, projectName: nil)
                     }
                 }
+            }
+
+            if isFiltering && !mcpHasVisibleResults() {
+                noMatchesState
             }
         }
         .padding(.vertical, 6)
@@ -335,6 +413,21 @@ struct SkillsMenuCardView: View {
             return "\(hours)h ago"
         }
     }
+
+    private func mcpHasVisibleResults() -> Bool {
+        for source in MCPSource.allCases {
+            guard let servers = skillsStore.mcpServersBySource[source], !servers.isEmpty else { continue }
+            if source == .project {
+                let groupedByProject = Dictionary(grouping: servers) { $0.projectName ?? "Unknown" }
+                for (projectName, _) in groupedByProject {
+                    if projectName.lowercased().contains(filterQuery) { return true }
+                }
+            } else {
+                continue
+            }
+        }
+        return false
+    }
 }
 
 // MARK: - Agents List
@@ -353,9 +446,13 @@ private extension SkillsMenuCardView {
                 case .project:
                     return false
                 }
-            }.sorted()
+            }
             if !globalAgents.isEmpty {
-                AgentScopeSectionView(title: "All Projects", icon: "globe", agents: globalAgents)
+                AgentScopeSectionView(
+                    title: "All Projects",
+                    icon: "globe",
+                    agents: globalAgents.sorted()
+                )
             }
 
             // Project agents + project/local scoped plugin agents, grouped by project
@@ -370,15 +467,21 @@ private extension SkillsMenuCardView {
                     return false
                 }
             }
-            if !projectScopedAgents.isEmpty {
-                let groupedByProject = Dictionary(grouping: projectScopedAgents) { agent in
-                    projectDisplayName(for: agent.projectRoot)
+            let groupedByProject = Dictionary(grouping: projectScopedAgents) { agent in
+                projectDisplayName(for: agent.projectRoot)
+            }
+            let visibleProjectNames = groupedByProject.keys.sorted().filter { projectName in
+                if !isFiltering { return true }
+                return projectName.lowercased().contains(filterQuery)
+            }
+            ForEach(visibleProjectNames, id: \.self) { projectName in
+                if let agents = groupedByProject[projectName] {
+                    AgentScopeSectionView(title: projectName, icon: "folder", agents: agents.sorted())
                 }
-                ForEach(groupedByProject.keys.sorted(), id: \.self) { projectName in
-                    if let agents = groupedByProject[projectName] {
-                        AgentScopeSectionView(title: projectName, icon: "folder", agents: agents.sorted())
-                    }
-                }
+            }
+
+            if isFiltering && visibleProjectNames.isEmpty {
+                noMatchesState
             }
         }
         .padding(.vertical, 6)
@@ -413,13 +516,10 @@ private struct SkillScopeSectionView: View {
                     .font(.caption)
                     .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
 
-                Text(title)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
+                SectionTitleView(title: title, isHighlighted: isHighlighted)
 
                 Text(countLabel)
-                    .font(.caption)
+                    .font(.footnote)
                     .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted).opacity(0.7))
 
                 Spacer()
@@ -440,6 +540,39 @@ private struct SkillScopeSectionView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 4)
             }
+        }
+    }
+}
+
+// MARK: - Section Title
+
+private struct SectionTitleView: View {
+    let title: String
+    let isHighlighted: Bool
+
+    private var baseColor: Color {
+        MenuHighlightStyle.secondary(isHighlighted)
+    }
+
+    var body: some View {
+        let parts = title.split(separator: "/").map(String.init)
+        if parts.count >= 2 {
+            let folder = parts.last ?? title
+            let parent = parts.dropLast().joined(separator: "/")
+            HStack(spacing: 0) {
+                Text(parent + "/")
+                    .font(.callout)
+                    .foregroundStyle(baseColor.opacity(0.6))
+                Text(folder)
+                    .font(.callout)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(baseColor)
+            }
+        } else {
+            Text(title)
+                .font(.callout)
+                .fontWeight(.semibold)
+                .foregroundStyle(baseColor)
         }
     }
 }
@@ -614,18 +747,15 @@ private struct MCPSourceSectionView: View {
                     .font(.caption)
                     .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
 
-                Text(sectionTitle)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
+                SectionTitleView(title: sectionTitle, isHighlighted: isHighlighted)
 
                 if source == .builtIn {
                     Text("always available")
-                        .font(.caption)
+                        .font(.footnote)
                         .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted).opacity(0.5))
                 } else {
                     Text("(\(servers.count))")
-                        .font(.caption)
+                        .font(.footnote)
                         .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted).opacity(0.7))
                 }
 
@@ -833,13 +963,10 @@ private struct AgentScopeSectionView: View {
                     .font(.caption)
                     .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
 
-                Text(title)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
+                SectionTitleView(title: title, isHighlighted: isHighlighted)
 
                 Text(countLabel)
-                    .font(.caption)
+                    .font(.footnote)
                     .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted).opacity(0.7))
 
                 Spacer()

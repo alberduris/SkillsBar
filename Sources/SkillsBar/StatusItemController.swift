@@ -2,29 +2,17 @@ import AppKit
 import SkillsBarCore
 import SwiftUI
 
-// MARK: - Vibrancy-enabled hosting view
-
-@MainActor
-private final class MenuCardItemHostingView<Content: View>: NSHostingView<Content> {
-    override var allowsVibrancy: Bool { true }
-
-    override var intrinsicContentSize: NSSize {
-        let size = super.intrinsicContentSize
-        guard self.frame.width > 0 else { return size }
-        return NSSize(width: self.frame.width, height: size.height)
-    }
-}
-
 /// Controls the menu bar status item for SkillsBar
 @MainActor
-final class StatusItemController: NSObject, NSMenuDelegate {
+final class StatusItemController: NSObject, NSPopoverDelegate {
     private static let menuCardBaseWidth: CGFloat = 420
 
     private let statusItem: NSStatusItem
     private let skillsStore: SkillsStore
     private let settings: SettingsStore
     private let updater: UpdaterProviding
-    private var menu: NSMenu?
+    private let popover = NSPopover()
+    private var hostingController: NSHostingController<SkillsMenuCardView>?
 
     init(skillsStore: SkillsStore, settings: SettingsStore, updater: UpdaterProviding) {
         self.skillsStore = skillsStore
@@ -35,6 +23,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         super.init()
 
         setupStatusItem()
+        configurePopover()
         observeChanges()
     }
 
@@ -45,11 +34,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         button.imageScaling = .scaleNone
         updateIcon()
 
-        // Create and attach menu
-        let menu = NSMenu()
-        menu.delegate = self
-        self.menu = menu
-        statusItem.menu = menu
+        button.target = self
+        button.action = #selector(togglePopover)
+    }
+
+    private func configurePopover() {
+        popover.behavior = .transient
+        popover.delegate = self
     }
 
     private func observeChanges() {
@@ -70,30 +61,28 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         button.image = icon
     }
 
-    // MARK: - NSMenuDelegate
+    // MARK: - Popover
 
-    nonisolated func menuNeedsUpdate(_ menu: NSMenu) {
-        MainActor.assumeIsolated {
-            self.rebuildMenu()
+    @objc private func togglePopover() {
+        if popover.isShown {
+            popover.performClose(nil)
+            return
+        }
+        showPopover()
+    }
+
+    private func showPopover() {
+        guard let button = statusItem.button else { return }
+        rebuildPopoverContent()
+        updatePopoverSize()
+        NSApp.activate(ignoringOtherApps: true)
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        Task {
+            await skillsStore.refresh()
         }
     }
 
-    nonisolated func menuWillOpen(_ menu: NSMenu) {
-        MainActor.assumeIsolated {
-            self.rebuildMenu()
-            // Refresh skills when menu opens
-            Task {
-                await self.skillsStore.refresh()
-            }
-        }
-    }
-
-    private func rebuildMenu() {
-        guard let menu else { return }
-        menu.removeAllItems()
-
-        // Main card view
-        let cardItem = NSMenuItem()
+    private func rebuildPopoverContent() {
         let cardView = SkillsMenuCardView(
             skillsStore: skillsStore,
             onRefresh: { [weak self] in
@@ -104,16 +93,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             },
             width: Self.menuCardBaseWidth
         )
-        let hostingView = MenuCardItemHostingView(rootView: cardView)
-        hostingView.frame.size = hostingView.fittingSize
-        cardItem.view = hostingView
-        menu.addItem(cardItem)
+        let controller = NSHostingController(rootView: cardView)
+        hostingController = controller
+        popover.contentViewController = controller
+    }
+
+    private func updatePopoverSize() {
+        guard let view = hostingController?.view else { return }
+        view.layoutSubtreeIfNeeded()
+        let fittingSize = view.fittingSize
+        popover.contentSize = NSSize(width: Self.menuCardBaseWidth, height: fittingSize.height)
     }
 
     // MARK: - Actions
 
     private func openSettings() {
-        menu?.cancelTracking()
+        popover.performClose(nil)
         AppDelegate.shared?.openSettings()
     }
 }
