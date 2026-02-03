@@ -12,6 +12,9 @@ public final class SkillsStore {
     /// All discovered MCP servers
     public private(set) var mcpServers: [MCPServer] = []
 
+    /// All discovered agent profiles
+    public private(set) var agents: [AgentProfile] = []
+
     /// Skills grouped by source
     public var skillsBySource: [SkillSource: [Skill]] {
         Dictionary(grouping: skills, by: \.source)
@@ -57,10 +60,14 @@ public final class SkillsStore {
     /// Whether there are any MCP servers
     public var hasMCPServers: Bool { !mcpServers.isEmpty }
 
+    /// Whether there are any agent profiles
+    public var hasAgents: Bool { !agents.isEmpty }
+
     // MARK: - Private State
 
     private var discovery: SkillsDiscovery
     private var mcpDiscovery = MCPDiscovery()
+    private var agentsDiscovery = AgentsDiscovery()
 
     /// Enabled agents for discovery
     public var enabledAgents: [Agent] = AgentRegistry.supported {
@@ -88,6 +95,9 @@ public final class SkillsStore {
 
     /// Whether there are any skills
     public var hasSkills: Bool { !skills.isEmpty }
+
+    /// Total number of agent profiles
+    public var agentCount: Int { agents.count }
 
     /// User-invocable skills only
     public var userInvocableSkills: [Skill] {
@@ -126,12 +136,34 @@ public final class SkillsStore {
             projectPaths: allProjectPaths
         )
 
+        let agentOptions = AgentsDiscovery.Options(
+            includeGlobal: true,
+            includeProject: !allProjectPaths.isEmpty,
+            projectPaths: allProjectPaths
+        )
+
         // Discover skills and MCPs concurrently
         async let discoveredSkills = discovery.discoverAll(options: skillsOptions)
         async let discoveredMCPs = mcpDiscovery.discoverAll(options: mcpOptions)
+        async let discoveredAgents = agentsDiscovery.discoverAll(options: agentOptions)
 
-        skills = await discoveredSkills
+        let allProjectPathSet = Set(allProjectPaths.map { $0.standardizedFileURL.path })
+        let rawSkills = await discoveredSkills
+        let filteredSkills = rawSkills.filter { skill in
+            guard skill.source == .plugin else { return true }
+            guard let scope = skill.pluginScope else { return true }
+            switch scope {
+            case .user:
+                return true
+            case .project, .local:
+                guard let projectRoot = skill.projectRoot else { return false }
+                return allProjectPathSet.contains(projectRoot.standardizedFileURL.path)
+            }
+        }
+
+        skills = filteredSkills
         mcpServers = await discoveredMCPs
+        agents = await discoveredAgents
         lastRefreshTime = Date()
 
         isRefreshing = false
@@ -175,6 +207,7 @@ public final class SkillsStore {
     public func clear() {
         skills = []
         mcpServers = []
+        agents = []
         lastRefreshTime = nil
     }
 

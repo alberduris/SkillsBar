@@ -54,6 +54,13 @@ public struct SkillMetadata: Sendable, Codable, Equatable {
 
 /// Represents a skill for an AI coding agent
 public struct Skill: Identifiable, Hashable, Sendable {
+    /// Install scope for plugin skills
+    public enum PluginScope: String, Sendable, Codable, CaseIterable {
+        case user
+        case project
+        case local
+    }
+
     /// Unique identifier (path-based)
     public let id: String
 
@@ -84,6 +91,9 @@ public struct Skill: Identifiable, Hashable, Sendable {
     /// Project root if source is .project
     public let projectRoot: URL?
 
+    /// Plugin install scope (user/project/local) if source is .plugin
+    public let pluginScope: PluginScope?
+
     /// Additional metadata from SKILL.md
     public let metadata: SkillMetadata?
 
@@ -103,6 +113,7 @@ public struct Skill: Identifiable, Hashable, Sendable {
         marketplaceName: String? = nil,
         marketplaceRepo: String? = nil,
         projectRoot: URL? = nil,
+        pluginScope: PluginScope? = nil,
         metadata: SkillMetadata? = nil,
         isEnabled: Bool = true
     ) {
@@ -116,6 +127,7 @@ public struct Skill: Identifiable, Hashable, Sendable {
         self.marketplaceName = marketplaceName
         self.marketplaceRepo = marketplaceRepo
         self.projectRoot = projectRoot
+        self.pluginScope = pluginScope
         self.metadata = metadata
         self.isEnabled = isEnabled
     }

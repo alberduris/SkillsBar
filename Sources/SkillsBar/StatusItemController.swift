@@ -18,7 +18,7 @@ private final class MenuCardItemHostingView<Content: View>: NSHostingView<Conten
 /// Controls the menu bar status item for SkillsBar
 @MainActor
 final class StatusItemController: NSObject, NSMenuDelegate {
-    private static let menuCardBaseWidth: CGFloat = 380
+    private static let menuCardBaseWidth: CGFloat = 420
 
     private let statusItem: NSStatusItem
     private let skillsStore: SkillsStore

@@ -21,6 +21,29 @@ public struct PluginSkillsSource: Sendable {
         let enabledPlugins: [String: Bool]?
     }
 
+    struct InstalledPluginsFile: Codable {
+        let version: Int?
+        let plugins: [String: [InstalledPluginEntry]]?
+    }
+
+    struct InstalledPluginEntry: Codable {
+        let scope: Skill.PluginScope
+        let installPath: String
+        let projectPath: String?
+        let lastUpdated: String?
+    }
+
+    struct PluginInstallInfo: Sendable {
+        let pluginKey: String
+        let pluginName: String
+        let marketplaceName: String
+        let scope: Skill.PluginScope
+        let installPath: String
+        let projectPath: URL?
+        let lastUpdated: Date?
+        let isEnabled: Bool
+    }
+
     /// Structure matching known_marketplaces.json format
     struct KnownMarketplaces: Codable {
         // This is a dictionary keyed by marketplace name
@@ -59,8 +82,14 @@ public struct PluginSkillsSource: Sendable {
             return []
         }
 
-        // Read enabled plugins from settings.json
+        // Read enabled plugins from settings.json (user scope)
         let enabledPlugins = readEnabledPlugins(from: agent.settingsPath)
+
+        // Read installed plugins (includes local/project scope info)
+        let installedPluginsPath = agent.pluginsPath?.appendingPathComponent("installed_plugins.json")
+        let installInfoByPath = readInstalledPlugins(
+            from: installedPluginsPath,
+            globalEnabled: enabledPlugins)
 
         // Read marketplace repos from known_marketplaces.json
         let marketplaceRepos = readMarketplaceRepos(from: agent.knownMarketplacesPath)
@@ -77,15 +106,17 @@ public struct PluginSkillsSource: Sendable {
             cachePath: pluginsCachePath,
             enabledPlugins: enabledPlugins,
             marketplaceRepos: marketplaceRepos,
-            agent: agent
+            agent: agent,
+            installInfoByPath: installInfoByPath
         )
     }
 
-    /// Read enabledPlugins from settings.json
-    private static func readEnabledPlugins(from settingsPath: URL) -> [String: Bool] {
-        guard FileManager.default.fileExists(atPath: settingsPath.path) else {
+    /// Read enabledPlugins from a settings file
+    private static func readEnabledPlugins(from settingsPath: URL?) -> [String: Bool] {
+        guard let settingsPath,
+              FileManager.default.fileExists(atPath: settingsPath.path) else {
             logger.debug("settings.json not found", metadata: [
-                "path": "\(settingsPath.path)",
+                "path": "\(settingsPath?.path ?? "nil")",
             ])
             return [:]
         }
@@ -101,6 +132,86 @@ public struct PluginSkillsSource: Sendable {
             ])
             return [:]
         }
+    }
+
+    /// Read installed_plugins.json and map install path -> install info
+    private static func readInstalledPlugins(
+        from path: URL?,
+        globalEnabled: [String: Bool]
+    ) -> [String: PluginInstallInfo] {
+        guard let path,
+              FileManager.default.fileExists(atPath: path.path) else {
+            return [:]
+        }
+
+        let decoder = JSONDecoder()
+        guard let data = try? Data(contentsOf: path),
+              let file = try? decoder.decode(InstalledPluginsFile.self, from: data),
+              let plugins = file.plugins else {
+            logger.warning("Failed to parse installed_plugins.json", metadata: [
+                "path": "\(path.path)",
+            ])
+            return [:]
+        }
+
+        var projectEnabledCache: [String: [String: Bool]] = [:]
+        var localEnabledCache: [String: [String: Bool]] = [:]
+        let isoFormatter = ISO8601DateFormatter()
+
+        func enabledMap(for scope: Skill.PluginScope, projectPath: String?) -> [String: Bool] {
+            switch scope {
+            case .user:
+                return globalEnabled
+            case .project:
+                guard let projectPath else { return [:] }
+                if let cached = projectEnabledCache[projectPath] { return cached }
+                let settingsURL = URL(fileURLWithPath: projectPath)
+                    .appendingPathComponent(".claude")
+                    .appendingPathComponent("settings.json")
+                let enabled = readEnabledPlugins(from: settingsURL)
+                projectEnabledCache[projectPath] = enabled
+                return enabled
+            case .local:
+                guard let projectPath else { return [:] }
+                if let cached = localEnabledCache[projectPath] { return cached }
+                let settingsURL = URL(fileURLWithPath: projectPath)
+                    .appendingPathComponent(".claude")
+                    .appendingPathComponent("settings.local.json")
+                let enabled = readEnabledPlugins(from: settingsURL)
+                localEnabledCache[projectPath] = enabled
+                return enabled
+            }
+        }
+
+        var result: [String: PluginInstallInfo] = [:]
+
+        for (pluginKey, entries) in plugins {
+            let parts = pluginKey.split(separator: "@", maxSplits: 1).map(String.init)
+            let pluginName = parts.first ?? pluginKey
+            let marketplaceName = parts.count > 1 ? parts[1] : ""
+
+            for entry in entries {
+                let installURL = URL(fileURLWithPath: entry.installPath).standardizedFileURL
+                let enabled = enabledMap(for: entry.scope, projectPath: entry.projectPath)
+                let isEnabled = enabled[pluginKey] ?? true
+                let lastUpdated = entry.lastUpdated.flatMap { isoFormatter.date(from: $0) }
+                let projectURL = entry.projectPath.map { URL(fileURLWithPath: $0) }
+
+                let info = PluginInstallInfo(
+                    pluginKey: pluginKey,
+                    pluginName: pluginName,
+                    marketplaceName: marketplaceName,
+                    scope: entry.scope,
+                    installPath: installURL.path,
+                    projectPath: projectURL,
+                    lastUpdated: lastUpdated,
+                    isEnabled: isEnabled
+                )
+                result[installURL.path] = info
+            }
+        }
+
+        return result
     }
 
     /// Read marketplace repos from known_marketplaces.json
@@ -137,7 +248,8 @@ public struct PluginSkillsSource: Sendable {
         cachePath: URL,
         enabledPlugins: [String: Bool],
         marketplaceRepos: [String: String],
-        agent: Agent
+        agent: Agent,
+        installInfoByPath: [String: PluginInstallInfo]
     ) async -> [Skill] {
         var skills: [Skill] = []
 
@@ -179,9 +291,7 @@ public struct PluginSkillsSource: Sendable {
             for pluginURL in plugins {
                 let pluginName = pluginURL.lastPathComponent
 
-                // Check if this plugin is enabled
                 let pluginKey = "\(pluginName)@\(marketplaceName)"
-                let isEnabled = enabledPlugins[pluginKey] ?? false
 
                 // Get the GitHub repo for this marketplace
                 let marketplaceRepo = marketplaceRepos[marketplaceName]
@@ -195,12 +305,18 @@ public struct PluginSkillsSource: Sendable {
                     continue
                 }
 
-                // Verify this is a valid plugin
-                let manifestPath = versionDir
+                // Verify this is a valid plugin (accept plugin.json or marketplace.json)
+                let pluginManifestPath = versionDir
                     .appendingPathComponent(".claude-plugin")
                     .appendingPathComponent("plugin.json")
+                let marketplaceManifestPath = versionDir
+                    .appendingPathComponent(".claude-plugin")
+                    .appendingPathComponent("marketplace.json")
 
-                guard FileManager.default.fileExists(atPath: manifestPath.path) else {
+                let hasPluginManifest = FileManager.default.fileExists(atPath: pluginManifestPath.path)
+                let hasMarketplaceManifest = FileManager.default.fileExists(atPath: marketplaceManifestPath.path)
+
+                guard hasPluginManifest || hasMarketplaceManifest else {
                     logger.debug("Plugin version missing manifest", metadata: [
                         "plugin": "\(pluginName)",
                         "version": "\(versionDir.lastPathComponent)",
@@ -219,7 +335,13 @@ public struct PluginSkillsSource: Sendable {
                     continue
                 }
 
-                // Discover skills, passing the enabled status and marketplace
+                // Resolve install info (scope/project/enablement)
+                let installInfo = installInfoByPath[versionDir.standardizedFileURL.path]
+                let resolvedEnabled = installInfo?.isEnabled ?? (enabledPlugins[pluginKey] ?? false)
+                let resolvedProjectRoot = installInfo?.projectPath
+                let resolvedScope = installInfo?.scope
+
+                // Discover skills, passing enabled status and marketplace
                 let pluginSkills = await GlobalSkillsSource.discoverSkills(
                     in: skillsPath,
                     agent: agent,
@@ -227,7 +349,9 @@ public struct PluginSkillsSource: Sendable {
                     pluginName: pluginName,
                     marketplaceName: marketplaceName,
                     marketplaceRepo: marketplaceRepo,
-                    isEnabled: isEnabled
+                    projectRoot: resolvedProjectRoot,
+                    pluginScope: resolvedScope,
+                    isEnabled: resolvedEnabled
                 )
 
                 logger.debug("Discovered skills from plugin", metadata: [
@@ -236,7 +360,7 @@ public struct PluginSkillsSource: Sendable {
                     "repo": "\(marketplaceRepo ?? "unknown")",
                     "version": "\(versionDir.lastPathComponent)",
                     "skillCount": "\(pluginSkills.count)",
-                    "isEnabled": "\(isEnabled)",
+                    "isEnabled": "\(resolvedEnabled)",
                 ])
 
                 skills.append(contentsOf: pluginSkills)

@@ -19,6 +19,13 @@ private struct MenuButtonStyle: ButtonStyle {
     }
 }
 
+/// Tab selector for the menu card content area.
+enum MenuTab: String, CaseIterable {
+    case skills
+    case mcps
+    case agents
+}
+
 /// Main card view for the skills menu.
 struct SkillsMenuCardView: View {
     let skillsStore: SkillsStore
@@ -27,6 +34,7 @@ struct SkillsMenuCardView: View {
     let width: CGFloat
 
     @Environment(\.menuItemHighlighted) private var isHighlighted
+    @State private var selectedTab: MenuTab = .skills
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -35,20 +43,41 @@ struct SkillsMenuCardView: View {
 
             Divider()
 
-            // Skills content
-            if skillsStore.skills.isEmpty && !skillsStore.hasMCPServers {
-                emptyState
-            } else if !skillsStore.skills.isEmpty {
-                skillsList
+            // Segmented control
+            Picker("", selection: $selectedTab) {
+                Text("Skills (\(skillsStore.totalCount))").tag(MenuTab.skills)
+                Text("MCPs (\(skillsStore.mcpCount))").tag(MenuTab.mcps)
+                Text("Agents (\(skillsStore.agentCount))").tag(MenuTab.agents)
             }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
 
-            // MCP servers section
-            if skillsStore.hasMCPServers {
-                if !skillsStore.skills.isEmpty {
-                    Divider()
+            // Tab content in scrollable area with fixed height.
+            // NSMenu items have a fixed frame — without a constant-height
+            // container, switching tabs causes the menu to freeze.
+            ScrollView {
+                switch selectedTab {
+                case .skills:
+                    if skillsStore.skills.isEmpty {
+                        emptyState
+                    } else {
+                        skillsList
+                    }
+                case .mcps:
+                    if skillsStore.hasMCPServers {
+                        mcpList
+                    } else {
+                        emptyMCPState
+                    }
+                case .agents:
+                    if skillsStore.hasAgents {
+                        agentsList
+                    } else {
+                        emptyAgentsState
+                    }
                 }
-                mcpList
             }
+            .frame(height: 480)
 
             Divider()
 
@@ -110,7 +139,7 @@ struct SkillsMenuCardView: View {
         .padding(.bottom, 2)
     }
 
-    // MARK: - Empty State
+    // MARK: - Empty States
 
     private var emptyState: some View {
         VStack(spacing: 8) {
@@ -122,7 +151,43 @@ struct SkillsMenuCardView: View {
                 .font(.subheadline)
                 .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
 
-            Text("Add skills to ~/.claude/skills/")
+            Text("Add skills to ~/.claude/skills/ or <project>/.claude/skills/")
+                .font(.footnote)
+                .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted).opacity(0.7))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+    }
+
+    private var emptyMCPState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "server.rack")
+                .font(.title)
+                .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
+
+            Text("No MCP servers found")
+                .font(.subheadline)
+                .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
+
+            Text("Configure MCPs in ~/.claude.json or .mcp.json")
+                .font(.footnote)
+                .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted).opacity(0.7))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+    }
+
+    private var emptyAgentsState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "person.crop.circle.badge.checkmark")
+                .font(.title)
+                .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
+
+            Text("No agents found")
+                .font(.subheadline)
+                .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
+
+            Text("Install plugin agents from Claude Code plugins")
                 .font(.footnote)
                 .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted).opacity(0.7))
         }
@@ -134,24 +199,41 @@ struct SkillsMenuCardView: View {
 
     private var skillsList: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Global skills
-            if let globalSkills = skillsStore.skillsBySource[.global], !globalSkills.isEmpty {
-                SkillSourceSectionView(source: .global, skills: globalSkills, projectName: nil)
+            // All-projects skills (includes user-scoped plugin skills)
+            let globalSkills = skillsStore.skills.filter { skill in
+                switch skill.source {
+                case .global:
+                    return true
+                case .plugin:
+                    let scope = skill.pluginScope ?? .user
+                    return scope == .user || skill.projectRoot == nil
+                case .project:
+                    return false
+                }
+            }.sorted()
+            if !globalSkills.isEmpty {
+                SkillScopeSectionView(title: "All Projects", icon: "globe", skills: globalSkills)
             }
 
-            // Plugin skills
-            if let pluginSkills = skillsStore.skillsBySource[.plugin], !pluginSkills.isEmpty {
-                SkillSourceSectionView(source: .plugin, skills: pluginSkills, projectName: nil)
+            // Project skills + project/local scoped plugin skills, grouped by project
+            let projectScopedSkills = skillsStore.skills.filter { skill in
+                switch skill.source {
+                case .project:
+                    return true
+                case .plugin:
+                    let scope = skill.pluginScope ?? .user
+                    return (scope == .local || scope == .project) && skill.projectRoot != nil
+                case .global:
+                    return false
+                }
             }
-
-            // Project skills - grouped by project
-            if let projectSkills = skillsStore.skillsBySource[.project], !projectSkills.isEmpty {
-                let groupedByProject = Dictionary(grouping: projectSkills) { skill in
+            if !projectScopedSkills.isEmpty {
+                let groupedByProject = Dictionary(grouping: projectScopedSkills) { skill in
                     projectDisplayName(for: skill.projectRoot)
                 }
                 ForEach(groupedByProject.keys.sorted(), id: \.self) { projectName in
                     if let skills = groupedByProject[projectName] {
-                        SkillSourceSectionView(source: .project, skills: skills, projectName: projectName)
+                        SkillScopeSectionView(title: projectName, icon: "folder", skills: skills.sorted())
                     }
                 }
             }
@@ -221,6 +303,9 @@ struct SkillsMenuCardView: View {
         if skillsStore.mcpCount > 0 {
             parts.append("\(skillsStore.mcpCount) MCPs")
         }
+        if skillsStore.agentCount > 0 {
+            parts.append("\(skillsStore.agentCount) agents")
+        }
         if parts.isEmpty {
             return "0 skills"
         }
@@ -252,28 +337,69 @@ struct SkillsMenuCardView: View {
     }
 }
 
-// MARK: - Source Section
+// MARK: - Agents List
 
-private struct SkillSourceSectionView: View {
-    let source: SkillSource
+private extension SkillsMenuCardView {
+    var agentsList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // All-projects agents (includes user-scoped plugin agents)
+            let globalAgents = skillsStore.agents.filter { agent in
+                switch agent.source {
+                case .global:
+                    return true
+                case .plugin:
+                    let scope = agent.pluginScope ?? .user
+                    return scope == .user || agent.projectRoot == nil
+                case .project:
+                    return false
+                }
+            }.sorted()
+            if !globalAgents.isEmpty {
+                AgentScopeSectionView(title: "All Projects", icon: "globe", agents: globalAgents)
+            }
+
+            // Project agents + project/local scoped plugin agents, grouped by project
+            let projectScopedAgents = skillsStore.agents.filter { agent in
+                switch agent.source {
+                case .project:
+                    return true
+                case .plugin:
+                    let scope = agent.pluginScope ?? .user
+                    return (scope == .local || scope == .project) && agent.projectRoot != nil
+                case .global:
+                    return false
+                }
+            }
+            if !projectScopedAgents.isEmpty {
+                let groupedByProject = Dictionary(grouping: projectScopedAgents) { agent in
+                    projectDisplayName(for: agent.projectRoot)
+                }
+                ForEach(groupedByProject.keys.sorted(), id: \.self) { projectName in
+                    if let agents = groupedByProject[projectName] {
+                        AgentScopeSectionView(title: projectName, icon: "folder", agents: agents.sorted())
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 6)
+    }
+}
+
+// MARK: - Scope Section
+
+private struct SkillScopeSectionView: View {
+    let title: String
+    let icon: String
     let skills: [Skill]
-    let projectName: String?
 
     @Environment(\.menuItemHighlighted) private var isHighlighted
-
-    private var sectionTitle: String {
-        if let projectName, source == .project {
-            return projectName
-        }
-        return source.displayName
-    }
 
     private var enabledCount: Int {
         skills.filter(\.isEnabled).count
     }
 
     private var countLabel: String {
-        if source == .plugin && enabledCount < skills.count {
+        if enabledCount < skills.count {
             return "(\(enabledCount)/\(skills.count))"
         }
         return "(\(skills.count))"
@@ -283,11 +409,11 @@ private struct SkillSourceSectionView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Section header
             HStack(spacing: 6) {
-                Image(systemName: source.sfSymbolName)
+                Image(systemName: icon)
                     .font(.caption)
                     .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
 
-                Text(sectionTitle)
+                Text(title)
                     .font(.caption)
                     .fontWeight(.semibold)
                     .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
@@ -342,6 +468,42 @@ private struct SkillRowView: View {
         return ""
     }
 
+    private var pluginScope: Skill.PluginScope? {
+        guard skill.source == .plugin else { return nil }
+        return skill.pluginScope ?? .user
+    }
+
+    private var originLabel: String? {
+        switch skill.source {
+        case .plugin:
+            return "Plugin"
+        case .global, .project:
+            return "Direct"
+        }
+    }
+
+    private var originColor: Color {
+        switch skill.source {
+        case .plugin:
+            return .orange
+        case .global, .project:
+            return .secondary
+        }
+    }
+
+    private var pluginScopeColor: Color {
+        switch pluginScope {
+        case .user:
+            return .blue
+        case .project:
+            return .green
+        case .local:
+            return .orange
+        case .none:
+            return .secondary
+        }
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             // Enabled/disabled indicator for plugin skills
@@ -353,12 +515,32 @@ private struct SkillRowView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                // Line 1: Skill name
+                // Line 1: Skill name + origin badges
                 HStack(spacing: 6) {
                     Text(skill.name)
                         .font(.subheadline)
                         .fontWeight(.semibold)
                         .foregroundStyle(MenuHighlightStyle.primary(isHighlighted))
+
+                    if let originLabel {
+                        Text(originLabel)
+                            .font(.system(size: 9, weight: .medium))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(originColor.opacity(0.15))
+                            .foregroundStyle(originColor)
+                            .clipShape(Capsule())
+
+                        if let scope = pluginScope {
+                            Text(scope.rawValue.capitalized)
+                                .font(.system(size: 9, weight: .medium))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(pluginScopeColor.opacity(0.15))
+                                .foregroundStyle(pluginScopeColor)
+                                .clipShape(Capsule())
+                        }
+                    }
 
                     Spacer()
 
@@ -369,7 +551,7 @@ private struct SkillRowView: View {
                     }
                 }
 
-                // Line 2: Marketplace repo as colored pill (for plugin skills)
+                // Line 2: Marketplace repo (for plugin skills)
                 if skill.source == .plugin && !marketplaceDisplayName.isEmpty {
                     Text(marketplaceDisplayName)
                         .font(.caption)
@@ -417,6 +599,9 @@ private struct MCPSourceSectionView: View {
     private var sectionTitle: String {
         if let projectName, source == .project {
             return projectName
+        }
+        if source == .global {
+            return "All Projects"
         }
         return source.displayName
     }
@@ -495,6 +680,24 @@ private struct MCPServerRowView: View {
         }
     }
 
+    private var pluginScope: Skill.PluginScope? {
+        guard server.pluginName != nil else { return nil }
+        return server.pluginScope ?? .user
+    }
+
+    private var pluginScopeColor: Color {
+        switch pluginScope {
+        case .user:
+            return .blue
+        case .project:
+            return .green
+        case .local:
+            return .orange
+        case .none:
+            return .secondary
+        }
+    }
+
     private var detailText: String {
         switch server.transport {
         case .http, .sse:
@@ -538,13 +741,34 @@ private struct MCPServerRowView: View {
                         .fontWeight(.semibold)
                         .foregroundStyle(MenuHighlightStyle.primary(isHighlighted))
 
-                    Text(server.transport.description)
-                        .font(.system(size: 9, weight: .medium))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(transportColor.opacity(0.15))
-                        .foregroundStyle(transportColor)
-                        .clipShape(Capsule())
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(transportColor)
+                            .frame(width: 6, height: 6)
+                        Text(server.transport.description)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(transportColor)
+                    }
+
+                    if server.pluginName != nil {
+                        Text("Plugin")
+                            .font(.system(size: 9, weight: .medium))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.orange.opacity(0.15))
+                            .foregroundStyle(Color.orange)
+                            .clipShape(Capsule())
+
+                        if let scope = pluginScope {
+                            Text(scope.rawValue.capitalized)
+                                .font(.system(size: 9, weight: .medium))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(pluginScopeColor.opacity(0.15))
+                                .foregroundStyle(pluginScopeColor)
+                                .clipShape(Capsule())
+                        }
+                    }
 
                     Spacer()
                 }
@@ -577,6 +801,168 @@ private struct MCPServerRowView: View {
             if let urlString = server.url, let url = URL(string: urlString) {
                 NSWorkspace.shared.open(url)
             }
+        }
+    }
+}
+
+// MARK: - Agent Scope Section
+
+private struct AgentScopeSectionView: View {
+    let title: String
+    let icon: String
+    let agents: [AgentProfile]
+
+    @Environment(\.menuItemHighlighted) private var isHighlighted
+
+    private var enabledCount: Int {
+        agents.filter(\.isEnabled).count
+    }
+
+    private var countLabel: String {
+        if enabledCount < agents.count {
+            return "(\(enabledCount)/\(agents.count))"
+        }
+        return "(\(agents.count))"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Section header
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.caption)
+                    .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
+
+                Text(title)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
+
+                Text(countLabel)
+                    .font(.caption)
+                    .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted).opacity(0.7))
+
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+            .background(MenuHighlightStyle.progressTrack(isHighlighted).opacity(0.5))
+
+            // Agents
+            ForEach(agents.prefix(8)) { agent in
+                AgentRowView(agent: agent)
+            }
+
+            if agents.count > 8 {
+                Text("... and \(agents.count - 8) more")
+                    .font(.footnote)
+                    .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
+            }
+        }
+    }
+}
+
+// MARK: - Agent Row
+
+private struct AgentRowView: View {
+    let agent: AgentProfile
+
+    @Environment(\.menuItemHighlighted) private var isHighlighted
+    @State private var isHovering = false
+
+    private var contentOpacity: Double {
+        agent.isEnabled ? 1.0 : 0.6
+    }
+
+    private var pluginScope: Skill.PluginScope? {
+        guard agent.source == .plugin else { return nil }
+        return agent.pluginScope ?? .user
+    }
+
+    private var pluginScopeColor: Color {
+        switch pluginScope {
+        case .user:
+            return .blue
+        case .project:
+            return .green
+        case .local:
+            return .orange
+        case .none:
+            return .secondary
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            if agent.source == .plugin {
+                Image(systemName: agent.isEnabled ? "checkmark.circle.fill" : "circle.dashed")
+                    .font(.system(size: 14))
+                    .foregroundStyle(agent.isEnabled ? Color.green : Color.secondary)
+                    .padding(.top, 1)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(agent.name)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(MenuHighlightStyle.primary(isHighlighted))
+
+                    if agent.source == .plugin {
+                        Text("Plugin")
+                            .font(.system(size: 9, weight: .medium))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.orange.opacity(0.15))
+                            .foregroundStyle(Color.orange)
+                            .clipShape(Capsule())
+
+                        if let scope = pluginScope {
+                            Text(scope.rawValue.capitalized)
+                                .font(.system(size: 9, weight: .medium))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(pluginScopeColor.opacity(0.15))
+                                .foregroundStyle(pluginScopeColor)
+                                .clipShape(Capsule())
+                        }
+                    }
+
+                    Spacer()
+                }
+
+                if let model = agent.model, !model.isEmpty {
+                    Text("Model: \(model)")
+                        .font(.caption)
+                        .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted).opacity(0.85))
+                }
+
+                if !agent.description.isEmpty {
+                    Text(agent.description)
+                        .font(.footnote)
+                        .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted).opacity(0.85))
+                        .lineLimit(1)
+                }
+            }
+        }
+        .opacity(contentOpacity)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background {
+            if isHovering {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.1))
+                    .padding(.horizontal, 6)
+            }
+        }
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            isHovering = hovering
+        }
+        .onTapGesture {
+            NSWorkspace.shared.activateFileViewerSelecting([agent.path])
         }
     }
 }

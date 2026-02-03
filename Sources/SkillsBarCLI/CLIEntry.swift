@@ -216,6 +216,18 @@ enum SkillsBarCLI {
             if let projectName = server.projectName {
                 dict["projectName"] = projectName
             }
+            if let pluginName = server.pluginName {
+                dict["pluginName"] = pluginName
+            }
+            if let marketplaceName = server.marketplaceName {
+                dict["marketplaceName"] = marketplaceName
+            }
+            if let marketplaceRepo = server.marketplaceRepo {
+                dict["marketplaceRepo"] = marketplaceRepo
+            }
+            if let pluginScope = server.pluginScope {
+                dict["pluginScope"] = pluginScope.rawValue
+            }
             return dict
         }
 
@@ -313,6 +325,12 @@ enum SkillsBarCLI {
             }
             if let marketplaceRepo = skill.marketplaceRepo {
                 dict["marketplaceRepo"] = marketplaceRepo
+            }
+            if let pluginScope = skill.pluginScope {
+                dict["pluginScope"] = pluginScope.rawValue
+            }
+            if let projectRoot = skill.projectRoot {
+                dict["projectRoot"] = projectRoot.path
             }
             return dict
         }

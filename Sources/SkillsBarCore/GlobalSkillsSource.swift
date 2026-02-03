@@ -34,6 +34,7 @@ public struct GlobalSkillsSource: Sendable {
     ///   - marketplaceName: Marketplace name if source is .plugin
     ///   - marketplaceRepo: Marketplace GitHub repo if source is .plugin (e.g., "user/repo")
     ///   - projectRoot: Project root if source is .project
+    ///   - pluginScope: Plugin install scope if source is .plugin
     ///   - isEnabled: Whether the source (plugin) is enabled (default: true)
     static func discoverSkills(
         in directory: URL,
@@ -43,6 +44,7 @@ public struct GlobalSkillsSource: Sendable {
         marketplaceName: String? = nil,
         marketplaceRepo: String? = nil,
         projectRoot: URL? = nil,
+        pluginScope: Skill.PluginScope? = nil,
         isEnabled: Bool = true
     ) async -> [Skill] {
         var skills: [Skill] = []
@@ -75,7 +77,14 @@ public struct GlobalSkillsSource: Sendable {
                     let parseResult = try SKILLMDParser.parse(at: skillFile)
 
                     let skill = Skill(
-                        id: makeSkillID(agent: agent, source: source, path: item, pluginName: pluginName, marketplaceName: marketplaceName),
+                        id: makeSkillID(
+                            agent: agent,
+                            source: source,
+                            path: item,
+                            pluginName: pluginName,
+                            marketplaceName: marketplaceName,
+                            projectRoot: projectRoot,
+                            pluginScope: pluginScope),
                         name: parseResult.name,
                         description: parseResult.description,
                         agent: agent,
@@ -85,6 +94,7 @@ public struct GlobalSkillsSource: Sendable {
                         marketplaceName: marketplaceName,
                         marketplaceRepo: marketplaceRepo,
                         projectRoot: projectRoot,
+                        pluginScope: pluginScope,
                         metadata: parseResult.metadata,
                         isEnabled: isEnabled
                     )
@@ -114,13 +124,27 @@ public struct GlobalSkillsSource: Sendable {
     }
 
     /// Create a unique skill ID from its components
-    static func makeSkillID(agent: Agent, source: SkillSource, path: URL, pluginName: String?, marketplaceName: String? = nil) -> String {
+    static func makeSkillID(
+        agent: Agent,
+        source: SkillSource,
+        path: URL,
+        pluginName: String?,
+        marketplaceName: String? = nil,
+        projectRoot: URL? = nil,
+        pluginScope: Skill.PluginScope? = nil
+    ) -> String {
         var components = [agent.id, source.rawValue]
         if let marketplaceName {
             components.append(marketplaceName)
         }
         if let pluginName {
             components.append(pluginName)
+        }
+        if let pluginScope {
+            components.append(pluginScope.rawValue)
+        }
+        if let projectRoot {
+            components.append(projectRoot.standardizedFileURL.path)
         }
         components.append(path.lastPathComponent)
         return components.joined(separator: ":")

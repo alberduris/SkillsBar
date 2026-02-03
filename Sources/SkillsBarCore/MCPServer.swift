@@ -96,6 +96,18 @@ public struct MCPServer: Identifiable, Hashable, Sendable {
     /// Project name (last path component) when source is .project
     public let projectName: String?
 
+    /// Plugin name if provided by a plugin
+    public let pluginName: String?
+
+    /// Marketplace name if provided by a plugin
+    public let marketplaceName: String?
+
+    /// Marketplace GitHub repo if provided by a plugin (e.g., "user/repo")
+    public let marketplaceRepo: String?
+
+    /// Plugin install scope (user/project/local) if provided by a plugin
+    public let pluginScope: Skill.PluginScope?
+
     /// Whether this server is enabled
     public let isEnabled: Bool
 
@@ -110,6 +122,10 @@ public struct MCPServer: Identifiable, Hashable, Sendable {
         headerKeys: [String] = [],
         source: MCPSource,
         projectName: String? = nil,
+        pluginName: String? = nil,
+        marketplaceName: String? = nil,
+        marketplaceRepo: String? = nil,
+        pluginScope: Skill.PluginScope? = nil,
         isEnabled: Bool = true
     ) {
         self.id = id
@@ -122,6 +138,10 @@ public struct MCPServer: Identifiable, Hashable, Sendable {
         self.headerKeys = headerKeys
         self.source = source
         self.projectName = projectName
+        self.pluginName = pluginName
+        self.marketplaceName = marketplaceName
+        self.marketplaceRepo = marketplaceRepo
+        self.pluginScope = pluginScope
         self.isEnabled = isEnabled
     }
 

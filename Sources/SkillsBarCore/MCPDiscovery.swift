@@ -74,6 +74,17 @@ public actor MCPDiscovery {
                 }
             }
 
+            // Plugin-provided MCPs (user/project/local scopes)
+            if options.includeGlobal || options.includeProject {
+                group.addTask {
+                    PluginMCPSource.discover(
+                        includeGlobal: options.includeGlobal,
+                        includeProject: options.includeProject,
+                        projectPaths: options.projectPaths
+                    )
+                }
+            }
+
             for await sourceServers in group {
                 servers.append(contentsOf: sourceServers)
             }
