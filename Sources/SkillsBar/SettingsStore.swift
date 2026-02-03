@@ -155,8 +155,8 @@ final class SettingsStore {
         let logLevelRaw = userDefaults.string(forKey: Keys.debugLogLevel) ?? SkillsBarLog.Level.info.rawValue
         debugLogLevel = SkillsBarLog.parseLevel(logLevelRaw) ?? .info
 
-        // Apply initial settings
-        LaunchAtLoginManager.setEnabled(launchAtLogin)
+        // Sync launch-at-login state only if out of sync
+        LaunchAtLoginManager.syncIfNeeded(launchAtLogin)
 
         // Sync enabled agents to SkillsStore on init
         Task { @MainActor in

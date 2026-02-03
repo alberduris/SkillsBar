@@ -10,6 +10,7 @@ enum LaunchAtLoginManager {
         return NSClassFromString("XCTestCase") != nil
     }()
 
+    /// Called when the user explicitly toggles the setting.
     static func setEnabled(_ enabled: Bool) {
         if self.isRunningTests { return }
         let service = SMAppService.mainApp
@@ -22,5 +23,15 @@ enum LaunchAtLoginManager {
         } catch {
             SkillsBarLog.logger(LogCategories.launchAtLogin).error("Failed to update login item: \(error)")
         }
+    }
+
+    /// Called on app launch to reconcile state without creating duplicates.
+    /// Only acts if the persisted preference disagrees with the actual registration status.
+    static func syncIfNeeded(_ enabled: Bool) {
+        if self.isRunningTests { return }
+        let service = SMAppService.mainApp
+        let isRegistered = service.status == .enabled
+        guard enabled != isRegistered else { return }
+        setEnabled(enabled)
     }
 }
