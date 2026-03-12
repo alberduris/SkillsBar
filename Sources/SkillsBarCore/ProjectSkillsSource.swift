@@ -5,26 +5,52 @@ import Logging
 public struct ProjectSkillsSource: Sendable {
     private static let logger = Logger(label: "SkillsBarCore.ProjectSkillsSource")
 
-    /// Discover project skills for an agent at a specific project root
+    /// Discover project skills for an agent at a specific project root (enabled + disabled)
     public static func discover(for agent: Agent, at projectRoot: URL) async -> [Skill] {
         let skillsPath = agent.projectSkillsPath(projectRoot: projectRoot)
 
-        guard FileManager.default.fileExists(atPath: skillsPath.path) else {
-            logger.debug("No project skills directory found", metadata: [
-                "agent": "\(agent.id)",
-                "project": "\(projectRoot.path)",
-                "path": "\(skillsPath.path)",
-            ])
-            return []
+        var allSkills: [Skill] = []
+
+        // Discover enabled skills
+        if FileManager.default.fileExists(atPath: skillsPath.path) {
+            let enabled = await GlobalSkillsSource.discoverSkills(
+                in: skillsPath,
+                agent: agent,
+                source: .project,
+                pluginName: nil,
+                projectRoot: projectRoot,
+                detectToggle: true
+            )
+            allSkills.append(contentsOf: enabled)
         }
 
-        return await GlobalSkillsSource.discoverSkills(
-            in: skillsPath,
+        // Discover disabled skills from <project>/.agents/skills/ (symlink-based)
+        let disabled = await GlobalSkillsSource.discoverDisabledFromAgentsDir(
+            agentSkillsPath: skillsPath,
             agent: agent,
             source: .project,
-            pluginName: nil,
-            projectRoot: projectRoot
+            projectRoot: projectRoot,
+            enabledNames: Set(allSkills.map(\.name))
         )
+        allSkills.append(contentsOf: disabled)
+
+        // Discover disabled skills from .disabled/ directory (move-based)
+        let disabledDir = skillsPath.appendingPathComponent(SkillToggler.disabledDirName)
+        if FileManager.default.fileExists(atPath: disabledDir.path) {
+            let moveDisabled = await GlobalSkillsSource.discoverSkills(
+                in: disabledDir,
+                agent: agent,
+                source: .project,
+                pluginName: nil,
+                projectRoot: projectRoot,
+                isEnabled: false,
+                overrideToggleCapability: .move,
+                restoreParentPath: skillsPath
+            )
+            allSkills.append(contentsOf: moveDisabled)
+        }
+
+        return allSkills
     }
 
     /// Discover project skills by searching up the directory tree from a starting path

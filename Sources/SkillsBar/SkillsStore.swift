@@ -1,4 +1,5 @@
 import Foundation
+import Logging
 import SkillsBarCore
 
 /// Main observable store for skills in the UI
@@ -65,6 +66,7 @@ public final class SkillsStore {
 
     // MARK: - Private State
 
+    private let logger = Logger(label: "SkillsBar.SkillsStore")
     private var discovery: SkillsDiscovery
     private var mcpDiscovery = MCPDiscovery()
     private var agentsDiscovery = AgentsDiscovery()
@@ -209,6 +211,49 @@ public final class SkillsStore {
         mcpServers = []
         agents = []
         lastRefreshTime = nil
+    }
+
+    /// Toggle a skill's enabled state and refresh
+    public func toggleSkill(_ skill: Skill) async {
+        logger.info("Toggle skill", metadata: [
+            "skill": "\(skill.name)",
+            "capability": "\(skill.toggleCapability.rawValue)",
+            "enabled": "\(skill.isEnabled)",
+        ])
+        do {
+            let newEnabled = try SkillToggler.toggle(skill)
+
+            // Optimistic update so the UI reflects the change immediately
+            if let index = skills.firstIndex(where: { $0.id == skill.id }) {
+                let updated = Skill(
+                    id: skill.id,
+                    name: skill.name,
+                    description: skill.description,
+                    agent: skill.agent,
+                    source: skill.source,
+                    path: skill.path,
+                    pluginName: skill.pluginName,
+                    marketplaceName: skill.marketplaceName,
+                    marketplaceRepo: skill.marketplaceRepo,
+                    projectRoot: skill.projectRoot,
+                    pluginScope: skill.pluginScope,
+                    metadata: skill.metadata,
+                    isEnabled: newEnabled,
+                    toggleCapability: skill.toggleCapability,
+                    canonicalPath: skill.canonicalPath
+                )
+                skills[index] = updated
+            }
+
+            // Full refresh to get the authoritative state
+            isRefreshing = false // Reset so refresh() doesn't bail
+            await refresh()
+        } catch {
+            logger.error("Toggle failed", metadata: [
+                "skill": "\(skill.name)",
+                "error": "\(error.localizedDescription)",
+            ])
+        }
     }
 
     /// Find a skill by ID

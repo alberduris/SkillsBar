@@ -4,6 +4,13 @@ import SwiftUI
 
 // MARK: - Button Styles
 
+/// Button style with zero visual feedback — the content itself provides feedback (e.g. icon change)
+private struct InertButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+    }
+}
+
 private struct MenuButtonStyle: ButtonStyle {
     let isHighlighted: Bool
 
@@ -145,18 +152,20 @@ struct SkillsMenuCardView: View {
 
                 Spacer()
 
-                if skillsStore.isRefreshing {
-                    ProgressView()
-                        .scaleEffect(0.5)
-                        .frame(width: 16, height: 16)
-                } else {
-                    Button(action: onRefresh) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.caption)
-                            .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
+                Group {
+                    if skillsStore.isRefreshing {
+                        ProgressView()
+                            .scaleEffect(0.5)
+                    } else {
+                        Button(action: onRefresh) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.caption)
+                                .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted))
+                        }
+                        .buttonStyle(MenuButtonStyle(isHighlighted: isHighlighted))
                     }
-                    .buttonStyle(MenuButtonStyle(isHighlighted: isHighlighted))
                 }
+                .frame(width: 24, height: 24)
             }
 
             HStack {
@@ -337,7 +346,7 @@ struct SkillsMenuCardView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 2)
-        .padding(.bottom, 2)
+        .padding(.bottom, 8)
     }
 
     // MARK: - MCP List
@@ -583,7 +592,7 @@ private struct SkillRowView: View {
     let skill: Skill
 
     @Environment(\.menuItemHighlighted) private var isHighlighted
-    @State private var isHovering = false
+    @State private var isToggling = false
 
     /// Opacity for disabled skills (not too faded)
     private var contentOpacity: Double {
@@ -637,15 +646,18 @@ private struct SkillRowView: View {
         }
     }
 
+    private var finderTarget: URL {
+        skill.isEnabled ? skill.path : (skill.canonicalPath ?? skill.path)
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            // Enabled/disabled indicator for plugin skills
-            if skill.source == .plugin {
-                Image(systemName: skill.isEnabled ? "checkmark.circle.fill" : "circle.dashed")
-                    .font(.system(size: 14))
-                    .foregroundStyle(skill.isEnabled ? Color.green : Color.secondary)
-                    .padding(.top, 1)
-            }
+            // Toggle / status indicator
+            SkillToggleIcon(
+                skill: skill,
+                isToggling: isToggling,
+                isHighlighted: isHighlighted
+            )
 
             VStack(alignment: .leading, spacing: 4) {
                 // Line 1: Skill name + origin badges
@@ -682,6 +694,13 @@ private struct SkillRowView: View {
                             .font(.caption)
                             .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted).opacity(0.7))
                     }
+
+                    Image(systemName: "folder")
+                        .font(.caption)
+                        .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted).opacity(0.5))
+                        .onTapGesture {
+                            NSWorkspace.shared.activateFileViewerSelecting([finderTarget])
+                        }
                 }
 
                 // Line 2: Marketplace repo (for plugin skills)
@@ -703,20 +722,42 @@ private struct SkillRowView: View {
         .opacity(contentOpacity)
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background {
-            if isHovering {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.accentColor.opacity(0.1))
-                    .padding(.horizontal, 6)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard skill.isToggleable, !isToggling else { return }
+            isToggling = true
+            Task {
+                await SkillsStore.shared.toggleSkill(skill)
+                isToggling = false
             }
         }
-        .contentShape(Rectangle())
-        .onHover { hovering in
-            isHovering = hovering
-        }
-        .onTapGesture {
-            NSWorkspace.shared.activateFileViewerSelecting([skill.path])
-        }
+    }
+}
+
+// MARK: - Skill Toggle Icon
+
+private struct SkillToggleIcon: View {
+    let skill: Skill
+    let isToggling: Bool
+    let isHighlighted: Bool
+
+    private var iconName: String {
+        if isToggling { return "circle.dotted" }
+        return skill.isEnabled ? "checkmark.circle.fill" : "circle.dashed"
+    }
+
+    private var iconColor: Color {
+        if isToggling { return .secondary }
+        if !skill.isToggleable { return skill.isEnabled ? .green.opacity(0.5) : .secondary.opacity(0.4) }
+        return skill.isEnabled ? .green : .secondary
+    }
+
+    var body: some View {
+        Image(systemName: iconName)
+            .font(.system(size: 14))
+            .foregroundStyle(iconColor)
+            .frame(width: 18, height: 18)
+            .padding(.top, 1)
     }
 }
 

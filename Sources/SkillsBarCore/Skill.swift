@@ -61,6 +61,16 @@ public struct Skill: Identifiable, Hashable, Sendable {
         case local
     }
 
+    /// How this skill can be toggled on/off
+    public enum ToggleCapability: String, Sendable, Codable {
+        /// Cannot be toggled from SkillsBar (e.g., plugin skills managed by Claude Code)
+        case none
+        /// Installed via symlink — toggle removes/recreates the symlink
+        case symlink
+        /// Copied or manually created — toggle moves to/from a .disabled/ directory
+        case move
+    }
+
     /// Unique identifier (path-based)
     public let id: String
 
@@ -102,6 +112,13 @@ public struct Skill: Identifiable, Hashable, Sendable {
     /// For plugin skills, reflects the plugin's enabled status in settings.json
     public let isEnabled: Bool
 
+    /// How this skill can be toggled on/off from SkillsBar
+    public let toggleCapability: ToggleCapability
+
+    /// Path to the canonical copy (e.g., symlink target in .agents/skills/)
+    /// Used by SkillToggler to recreate symlinks or restore moved skills
+    public let canonicalPath: URL?
+
     public init(
         id: String,
         name: String,
@@ -115,7 +132,9 @@ public struct Skill: Identifiable, Hashable, Sendable {
         projectRoot: URL? = nil,
         pluginScope: PluginScope? = nil,
         metadata: SkillMetadata? = nil,
-        isEnabled: Bool = true
+        isEnabled: Bool = true,
+        toggleCapability: ToggleCapability = .none,
+        canonicalPath: URL? = nil
     ) {
         self.id = id
         self.name = name
@@ -130,6 +149,8 @@ public struct Skill: Identifiable, Hashable, Sendable {
         self.pluginScope = pluginScope
         self.metadata = metadata
         self.isEnabled = isEnabled
+        self.toggleCapability = toggleCapability
+        self.canonicalPath = canonicalPath
     }
 
     // MARK: - Hashable
@@ -139,7 +160,7 @@ public struct Skill: Identifiable, Hashable, Sendable {
     }
 
     public static func == (lhs: Skill, rhs: Skill) -> Bool {
-        lhs.id == rhs.id
+        lhs.id == rhs.id && lhs.isEnabled == rhs.isEnabled
     }
 
     // MARK: - Computed Properties
@@ -152,6 +173,11 @@ public struct Skill: Identifiable, Hashable, Sendable {
     /// Whether this skill can be invoked by the user (e.g., via /skillname)
     public var isUserInvocable: Bool {
         metadata?.userInvocable ?? true
+    }
+
+    /// Whether this skill can be toggled on/off from SkillsBar
+    public var isToggleable: Bool {
+        toggleCapability != .none
     }
 
     /// Display label combining source and name
