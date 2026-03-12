@@ -593,6 +593,7 @@ private struct SkillRowView: View {
 
     @Environment(\.menuItemHighlighted) private var isHighlighted
     @State private var isToggling = false
+    @State private var showingInfoPopover = false
 
     /// Opacity for disabled skills (not too faded)
     private var contentOpacity: Double {
@@ -629,7 +630,7 @@ private struct SkillRowView: View {
         case .plugin:
             return .orange
         case .global, .project:
-            return .secondary
+            return .primary
         }
     }
 
@@ -640,10 +641,17 @@ private struct SkillRowView: View {
         case .project:
             return .green
         case .local:
-            return .orange
+            return .purple
         case .none:
             return .secondary
         }
+    }
+
+    private var nonToggleableReason: String {
+        if skill.source == .plugin {
+            return "Managed by Claude Code's plugin system. Toggle it via `claude plugin enable/disable <name>` or by editing enabledPlugins in your settings.json."
+        }
+        return "This skill is a regular directory, not a symlink. SkillsBar can only toggle symlink-based skills — the symlink can be safely removed and recreated because the original copy is preserved in .agents/skills/.\n\nTo make it toggleable, install it using the Symlink method via `npx skills add`."
     }
 
     private var finderTarget: URL {
@@ -667,23 +675,18 @@ private struct SkillRowView: View {
                         .fontWeight(.semibold)
                         .foregroundStyle(MenuHighlightStyle.primary(isHighlighted))
 
-                    if let originLabel {
-                        Text(originLabel)
-                            .font(.system(size: 9, weight: .medium))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(originColor.opacity(0.15))
-                            .foregroundStyle(originColor)
-                            .clipShape(Capsule())
+                    if skill.source == .plugin {
+                        AnthropicIcon()
+                    }
 
+                    if let originLabel {
                         if let scope = pluginScope {
-                            Text(scope.rawValue.capitalized)
-                                .font(.system(size: 9, weight: .medium))
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
-                                .background(pluginScopeColor.opacity(0.15))
-                                .foregroundStyle(pluginScopeColor)
-                                .clipShape(Capsule())
+                            SkillBadge(segments: [
+                                (originLabel, originColor),
+                                (scope.rawValue.capitalized, pluginScopeColor),
+                            ])
+                        } else {
+                            SkillBadge(text: originLabel, color: originColor)
                         }
                     }
 
@@ -693,6 +696,28 @@ private struct SkillRowView: View {
                         Image(systemName: "eye.slash")
                             .font(.caption)
                             .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted).opacity(0.7))
+                    }
+
+                    if !skill.isToggleable {
+                        Image(systemName: "info.circle")
+                            .font(.caption)
+                            .foregroundStyle(MenuHighlightStyle.secondary(isHighlighted).opacity(0.6))
+                            .onTapGesture {
+                                showingInfoPopover.toggle()
+                            }
+                            .popover(isPresented: $showingInfoPopover, arrowEdge: .trailing) {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Not toggleable")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                    Text(nonToggleableReason)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .padding(12)
+                                .frame(width: 240)
+                            }
                     }
 
                     Image(systemName: "folder")
@@ -731,6 +756,52 @@ private struct SkillRowView: View {
                 isToggling = false
             }
         }
+    }
+}
+
+// MARK: - Skill Badge
+
+private struct AnthropicIcon: View {
+    var body: some View {
+        if let url = Bundle.module.url(forResource: "AnthropicIcon", withExtension: "png"),
+           let nsImage = NSImage(contentsOf: url) {
+            Image(nsImage: nsImage)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 14, height: 14)
+        }
+    }
+}
+
+private struct SkillBadge: View {
+    let segments: [(String, Color)]
+
+    init(text: String, color: Color) {
+        self.segments = [(text, color)]
+    }
+
+    init(segments: [(String, Color)]) {
+        self.segments = segments
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(segments.enumerated()), id: \.offset) { index, segment in
+                if index > 0 {
+                    Rectangle()
+                        .fill(.white.opacity(0.4))
+                        .frame(width: 1)
+                        .padding(.vertical, 2)
+                }
+                Text(segment.0)
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1.5)
+                    .background(segment.1.opacity(0.85))
+            }
+        }
+        .clipShape(Capsule())
     }
 }
 
@@ -863,7 +934,7 @@ private struct MCPServerRowView: View {
         case .project:
             return .green
         case .local:
-            return .orange
+            return .purple
         case .none:
             return .secondary
         }
@@ -922,22 +993,15 @@ private struct MCPServerRowView: View {
                     }
 
                     if server.pluginName != nil {
-                        Text("Plugin")
-                            .font(.system(size: 9, weight: .medium))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(Color.orange.opacity(0.15))
-                            .foregroundStyle(Color.orange)
-                            .clipShape(Capsule())
+                        AnthropicIcon()
 
                         if let scope = pluginScope {
-                            Text(scope.rawValue.capitalized)
-                                .font(.system(size: 9, weight: .medium))
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
-                                .background(pluginScopeColor.opacity(0.15))
-                                .foregroundStyle(pluginScopeColor)
-                                .clipShape(Capsule())
+                            SkillBadge(segments: [
+                                ("Plugin", .orange),
+                                (scope.rawValue.capitalized, pluginScopeColor),
+                            ])
+                        } else {
+                            SkillBadge(text: "Plugin", color: .orange)
                         }
                     }
 
@@ -1056,7 +1120,7 @@ private struct AgentRowView: View {
         case .project:
             return .green
         case .local:
-            return .orange
+            return .purple
         case .none:
             return .secondary
         }
@@ -1079,22 +1143,15 @@ private struct AgentRowView: View {
                         .foregroundStyle(MenuHighlightStyle.primary(isHighlighted))
 
                     if agent.source == .plugin {
-                        Text("Plugin")
-                            .font(.system(size: 9, weight: .medium))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(Color.orange.opacity(0.15))
-                            .foregroundStyle(Color.orange)
-                            .clipShape(Capsule())
+                        AnthropicIcon()
 
                         if let scope = pluginScope {
-                            Text(scope.rawValue.capitalized)
-                                .font(.system(size: 9, weight: .medium))
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
-                                .background(pluginScopeColor.opacity(0.15))
-                                .foregroundStyle(pluginScopeColor)
-                                .clipShape(Capsule())
+                            SkillBadge(segments: [
+                                ("Plugin", .orange),
+                                (scope.rawValue.capitalized, pluginScopeColor),
+                            ])
+                        } else {
+                            SkillBadge(text: "Plugin", color: .orange)
                         }
                     }
 
