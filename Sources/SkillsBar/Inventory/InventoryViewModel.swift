@@ -40,8 +40,25 @@ final class InventoryViewModel {
         currentContent.sections
     }
 
+    var visibleItems: [InventoryItem] {
+        sections.flatMap(\.items)
+    }
+
+    var selectedItem: InventoryItem? {
+        guard let selectedItemID else { return nil }
+        return visibleItems.first { $0.id == selectedItemID }
+    }
+
     var showsNoMatchesState: Bool {
         currentContent.showsNoMatchesState
+    }
+
+    func select(_ itemID: String?) {
+        selectedItemID = itemID
+    }
+
+    func select(_ item: InventoryItem) {
+        selectedItemID = item.id
     }
 
     func performPrimaryAction(for item: InventoryItem) {
@@ -78,5 +95,9 @@ final class InventoryViewModel {
             ),
             filterText: filterText
         )
+
+        if let selectedItemID, !visibleItems.contains(where: { $0.id == selectedItemID }) {
+            self.selectedItemID = nil
+        }
     }
 }

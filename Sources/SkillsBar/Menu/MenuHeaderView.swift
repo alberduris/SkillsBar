@@ -2,17 +2,24 @@ import SwiftUI
 
 struct MenuHeaderView: View {
     @Bindable var skillsStore: SkillsStore
+    let onOpenLibrary: () -> Void
     let onRefresh: () -> Void
 
     @Environment(\.menuItemHighlighted) private var isHighlighted
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("SkillsBar")
-                    .font(.headline)
-                    .fontWeight(.semibold)
+            HStack(alignment: .center) {
+                Button(action: onOpenLibrary) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sidebar.left")
+                            .font(.caption)
+                        Text("Open Library")
+                            .font(.subheadline.weight(.semibold))
+                    }
                     .foregroundStyle(MenuHighlightStyle.primary(isHighlighted))
+                }
+                .buttonStyle(MenuButtonStyle(isHighlighted: isHighlighted))
 
                 Spacer()
 
@@ -31,8 +38,14 @@ struct MenuHeaderView: View {
                 }
                 .frame(width: 24, height: 24)
             }
+            .padding(.bottom, 2)
 
             HStack {
+                Text("SkillsBar")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(MenuHighlightStyle.primary(isHighlighted))
+
                 let enabledCount = skillsStore.skills.filter(\.isEnabled).count
                 Text(headerSubtitle)
                     .font(.subheadline)

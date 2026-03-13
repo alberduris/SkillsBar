@@ -33,7 +33,7 @@ final class InventoryActionHandler {
             guard let url = item.primaryURL else { return }
             NSWorkspace.shared.open(url)
         case .copyPath:
-            guard let path = item.primaryLocation?.path else { return }
+            guard let path = item.copyText else { return }
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             pasteboard.setString(path, forType: .string)

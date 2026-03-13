@@ -4,6 +4,7 @@ import SwiftUI
 struct SkillsMenuCardView: View {
     @Bindable var skillsStore: SkillsStore
     let onRefresh: () -> Void
+    let onOpenLibrary: () -> Void
     let onOpenSettings: () -> Void
     let width: CGFloat
 
@@ -12,11 +13,13 @@ struct SkillsMenuCardView: View {
     init(
         skillsStore: SkillsStore,
         onRefresh: @escaping () -> Void,
+        onOpenLibrary: @escaping () -> Void,
         onOpenSettings: @escaping () -> Void,
         width: CGFloat
     ) {
         self.skillsStore = skillsStore
         self.onRefresh = onRefresh
+        self.onOpenLibrary = onOpenLibrary
         self.onOpenSettings = onOpenSettings
         self.width = width
         _viewModel = State(initialValue: InventoryViewModel(skillsStore: skillsStore))
@@ -26,7 +29,11 @@ struct SkillsMenuCardView: View {
         @Bindable var viewModel = viewModel
 
         VStack(alignment: .leading, spacing: 6) {
-            MenuHeaderView(skillsStore: skillsStore, onRefresh: onRefresh)
+            MenuHeaderView(
+                skillsStore: skillsStore,
+                onOpenLibrary: onOpenLibrary,
+                onRefresh: onRefresh
+            )
 
             Divider()
 

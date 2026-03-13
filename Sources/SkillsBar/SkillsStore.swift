@@ -278,3 +278,19 @@ extension SkillsStore {
     /// Shared instance for app-wide access
     public static let shared = SkillsStore()
 }
+
+#if DEBUG
+extension SkillsStore {
+    func replaceContentsForTesting(
+        skills: [Skill],
+        mcpServers: [MCPServer],
+        agents: [AgentProfile]
+    ) {
+        self.skills = skills
+        self.mcpServers = mcpServers
+        self.agents = agents
+        self.lastRefreshTime = Date()
+        self.isRefreshing = false
+    }
+}
+#endif

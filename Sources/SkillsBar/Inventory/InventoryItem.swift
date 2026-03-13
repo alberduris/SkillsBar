@@ -26,6 +26,7 @@ struct InventoryItem: Identifiable, Hashable {
     let primaryLocation: URL?
     let secondaryLocation: URL?
     let primaryURL: URL?
+    let copyText: String?
     let availableActions: [InventoryAction]
     let primaryAction: InventoryAction?
     let infoMessage: String?
@@ -74,6 +75,7 @@ extension InventoryItem {
             primaryLocation: finderTarget,
             secondaryLocation: skill.skillFilePath,
             primaryURL: nil,
+            copyText: finderTarget.path,
             availableActions: availableActions,
             primaryAction: skill.isToggleable ? .toggleEnabled : nil,
             infoMessage: skill.isToggleable ? nil : nonToggleableReason(for: skill),
@@ -98,6 +100,9 @@ extension InventoryItem {
         let primaryURL = server.url.flatMap(URL.init(string:))
         if primaryURL != nil {
             availableActions.append(.openURL)
+            availableActions.append(.copyPath)
+        } else if let subtitle = mcpSubtitle(for: server), !subtitle.isEmpty {
+            availableActions.append(.copyPath)
         }
 
         return InventoryItem(
@@ -113,6 +118,7 @@ extension InventoryItem {
             primaryLocation: nil,
             secondaryLocation: nil,
             primaryURL: primaryURL,
+            copyText: primaryURL?.absoluteString ?? mcpSubtitle(for: server),
             availableActions: availableActions,
             primaryAction: primaryURL != nil ? .openURL : nil,
             infoMessage: nil,
@@ -141,6 +147,7 @@ extension InventoryItem {
             primaryLocation: agent.path,
             secondaryLocation: nil,
             primaryURL: nil,
+            copyText: agent.path.path,
             availableActions: [.revealInFinder, .copyPath],
             primaryAction: .revealInFinder,
             infoMessage: nil,

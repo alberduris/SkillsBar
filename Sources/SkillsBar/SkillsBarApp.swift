@@ -48,6 +48,11 @@ struct SkillsBarApp: App {
         .defaultSize(width: 20, height: 20)
         .windowStyle(.hiddenTitleBar)
 
+        Window("SkillsBar Library", id: AppWindowID.library) {
+            InventoryLibraryView(skillsStore: skillsStore)
+        }
+        .defaultSize(width: 1100, height: 720)
+
         Settings {
             PreferencesView(settings: settings, skillsStore: skillsStore, updater: appDelegate.updaterController)
         }
@@ -148,5 +153,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func openSettings() {
         NSApp.activate(ignoringOtherApps: true)
         NotificationCenter.default.post(name: .skillsbarOpenSettings, object: nil)
+    }
+
+    func openLibrary() {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        NotificationCenter.default.post(name: .skillsbarOpenLibrary, object: nil)
+    }
+
+    func libraryWindowDidOpen() {
+        NSApp.setActivationPolicy(.regular)
+    }
+
+    func libraryWindowDidClose() {
+        NSApp.setActivationPolicy(.accessory)
     }
 }

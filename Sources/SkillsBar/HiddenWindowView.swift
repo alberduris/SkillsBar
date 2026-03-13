@@ -5,6 +5,7 @@ import SwiftUI
 /// This is necessary because @Environment(\.openSettings) is only available in SwiftUI Views.
 struct HiddenWindowView: View {
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Color.clear
@@ -13,6 +14,12 @@ struct HiddenWindowView: View {
                 SkillsBarLog.logger(LogCategories.app).info("HiddenWindowView received openSettings notification")
                 Task { @MainActor in
                     self.openSettings()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .skillsbarOpenLibrary)) { _ in
+                SkillsBarLog.logger(LogCategories.app).info("HiddenWindowView received openLibrary notification")
+                Task { @MainActor in
+                    self.openWindow(id: AppWindowID.library)
                 }
             }
             .onAppear {

@@ -88,6 +88,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             onRefresh: { [weak self] in
                 Task { await self?.skillsStore.refresh() }
             },
+            onOpenLibrary: { [weak self] in
+                self?.openLibrary()
+            },
             onOpenSettings: { [weak self] in
                 self?.openSettings()
             },
@@ -110,6 +113,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private func openSettings() {
         popover.performClose(nil)
         AppDelegate.shared?.openSettings()
+    }
+
+    private func openLibrary() {
+        popover.performClose(nil)
+        AppDelegate.shared?.openLibrary()
     }
 }
 

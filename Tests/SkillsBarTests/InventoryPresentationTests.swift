@@ -68,6 +68,8 @@ struct InventoryPresentationTests {
         #expect(item.kind == .mcp)
         #expect(item.primaryAction == .openURL)
         #expect(item.availableActions.contains(.openURL))
+        #expect(item.availableActions.contains(.copyPath))
+        #expect(item.copyText == "https://mcp.example.com")
         #expect(item.badges.contains { $0.text == "HTTP" })
     }
 
@@ -91,7 +93,96 @@ struct InventoryPresentationTests {
         #expect(item.primaryAction == .revealInFinder)
         #expect(item.availableActions.contains(.revealInFinder))
         #expect(item.availableActions.contains(.copyPath))
+        #expect(item.copyText == "/tmp/reviewer.md")
         #expect(item.badges.contains { $0.text == "Plugin" })
+    }
+
+    @MainActor
+    @Test("View model selection tracks selected visible item")
+    func viewModelSelection() throws {
+        let store = SkillsStore()
+        let skill = Skill(
+            id: "skill:selected",
+            name: "selected-skill",
+            description: "",
+            agent: defaultAgent,
+            source: .global,
+            path: URL(fileURLWithPath: "/tmp/selected-skill"),
+            isEnabled: true,
+            toggleCapability: .symlink
+        )
+        store.replaceContentsForTesting(skills: [skill], mcpServers: [], agents: [])
+
+        let viewModel = InventoryViewModel(skillsStore: store)
+
+        #expect(viewModel.selectedItem == nil)
+        #expect(viewModel.sections.count == 1)
+
+        let item = try #require(viewModel.sections.first?.items.first)
+        viewModel.select(item)
+
+        #expect(viewModel.selectedItemID == item.id)
+        #expect(viewModel.selectedItem?.id == item.id)
+    }
+
+    @MainActor
+    @Test("View model clears selection when selected item is no longer visible")
+    func viewModelSelectionPruning() throws {
+        let store = SkillsStore()
+        let skill = Skill(
+            id: "skill:selected",
+            name: "selected-skill",
+            description: "",
+            agent: defaultAgent,
+            source: .global,
+            path: URL(fileURLWithPath: "/tmp/selected-skill"),
+            isEnabled: true,
+            toggleCapability: .symlink
+        )
+        let server = MCPServer(
+            id: "mcp:global:server",
+            name: "server",
+            transport: .http,
+            url: "https://example.com",
+            source: .global
+        )
+        store.replaceContentsForTesting(skills: [skill], mcpServers: [server], agents: [])
+
+        let viewModel = InventoryViewModel(skillsStore: store)
+        let item = try #require(viewModel.sections.first?.items.first)
+        viewModel.select(item)
+
+        viewModel.selectedTab = .mcps
+
+        #expect(viewModel.selectedItemID == nil)
+        #expect(viewModel.selectedItem == nil)
+    }
+
+    @MainActor
+    @Test("View model filter rebuild preserves selection when item stays visible")
+    func viewModelFilterSelectionPersistence() throws {
+        let store = SkillsStore()
+        let projectRoot = URL(fileURLWithPath: "/work/apps/demo")
+        let skill = Skill(
+            id: "skill:project",
+            name: "project-skill",
+            description: "",
+            agent: defaultAgent,
+            source: .project,
+            path: projectRoot.appendingPathComponent(".claude/skills/project-skill"),
+            projectRoot: projectRoot,
+            isEnabled: true,
+            toggleCapability: .symlink
+        )
+        store.replaceContentsForTesting(skills: [skill], mcpServers: [], agents: [])
+
+        let viewModel = InventoryViewModel(skillsStore: store)
+        let item = try #require(viewModel.sections.first?.items.first)
+        viewModel.select(item)
+        viewModel.filterText = "apps/demo"
+
+        #expect(viewModel.selectedItemID == item.id)
+        #expect(viewModel.selectedItem?.id == item.id)
     }
 
     @Test("Skills sections preserve global and project grouping")
